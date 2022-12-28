@@ -252,6 +252,9 @@ class PoseAnalyzer:
         )
 
     def back_contour(self, img, img_orig):
+
+# INITIAL HIP-SHOULDER BOUNDING BOX
+################################################################################################
         # draw a rectangle around the point from the hip to shoulder
         cv2.rectangle(
             img=img, thickness=3, lineType=cv2.LINE_AA,
@@ -262,6 +265,11 @@ class PoseAnalyzer:
         # continue only if the horizontal distance of the extension is > self.contour_bbox_min
         if abs(self.shoulder[0] - self.hip[0]) * self.contour_bbox_ext < self.contour_bbox_min:
             return
+################################################################################################
+
+
+# EXTENDING THE BOUNDING BOX LEFT AND UP
+################################################################################################
         # extend the bounding box upwards and leftwards, based on the differences of distance
         ext_bbox_bottom_left = (
             int(self.hip[0] - (abs(self.shoulder[0] - self.hip[0]) * self.contour_bbox_ext)),
@@ -279,13 +287,17 @@ class PoseAnalyzer:
             int(self.shoulder[0]),
             int(self.shoulder[1] - (abs(self.shoulder[1] - self.hip[1]) * self.contour_bbox_ext) + vert_ext)
         )
-        
         cv2.rectangle(
             img=img, thickness=1, lineType=cv2.LINE_AA,
             pt1=ext_bbox_bottom_left,
             pt2=ext_bbox_top_right,
             color=self.light_orange,
         )
+################################################################################################
+
+
+# UPPER LUMBAR DIAGONAL ESTIMATION
+################################################################################################
         # draw a line from the top left to the bottom right of the new bounding box
         cv2.line(
             img=img, thickness=1, lineType=cv2.LINE_AA,
@@ -299,7 +311,11 @@ class PoseAnalyzer:
             ),
             color=self.light_red,
         )
+################################################################################################
 
+
+# LOWER LUMBAR DIAGONAL ESTIMATION
+################################################################################################
         # necessary variables to calculate intersection
         ext_bbox_bottom_right = pt1 = (
             int(self.shoulder[0]),
@@ -309,20 +325,7 @@ class PoseAnalyzer:
             ext_bbox_bottom_left[0],
             ext_bbox_top_right[1]
         )
-        line1_slope = (self.shoulder[1] - self.hip[1]) / (self.shoulder[0] - self.hip[0])
-        line1_y_intercept = self.shoulder[1] - line1_slope * self.shoulder[0]
-        line2_slope = (pt2[1] - pt1[1]) / (pt2[0] - pt1[0])
-        line2_y_intercept = pt1[1] - line2_slope * pt1[0]
-
-        # draw a line from the hip to the left of the bounding box
-        # y coordinate is determined from intersection of the shoulder-hip and the bounding box diagonal
-        # adjustments are made based on the bounding box
-        chosen_y_pos = int((line1_slope * line2_y_intercept - line2_slope * line1_y_intercept) / (line1_slope - line2_slope))
-        hip_shoulder_x_diff = abs(self.shoulder[0] - self.hip[0])
-        if hip_shoulder_x_diff < 100:
-            chosen_y_pos += round((100 - hip_shoulder_x_diff) / 2)
-        else:
-            chosen_y_pos -= round((hip_shoulder_x_diff - 100) * 1.5)
+        chosen_y_pos = int(self.hip[1]) - int(self.hip[0] - ext_bbox_bottom_left[0])
         cv2.line(
             img=img, thickness=1, lineType=cv2.LINE_AA,
             pt1=(int(self.hip[0]), int(self.hip[1])),
@@ -332,7 +335,11 @@ class PoseAnalyzer:
             ),
             color=self.light_blue
         )
+################################################################################################
 
+
+# LARGE BOUNDING BOX THRESHOLDING (TO DETERMINE BACK INTERSECTION)
+################################################################################################
         # threshold the extended bounding box, red for contrast, blurred to smooth
         image_b, image_g, image_r = cv2.split(img_orig)
         region = image_g[
@@ -352,7 +359,11 @@ class PoseAnalyzer:
         kernel = np.ones((5,5),np.uint8)
         thresh = cv2.erode(thresh, kernel, iterations=self.erosion_steps)
         thresh = cv2.dilate(thresh, kernel, iterations=self.erosion_steps+1)
+################################################################################################
 
+
+# DRAWING BACK CONTOUR
+################################################################################################
         # find only the largest contour (assumed to be user's back)
         contours, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
         contours = sorted(contours, key=cv2.contourArea, reverse=True)
@@ -368,52 +379,32 @@ class PoseAnalyzer:
                 if point[0][0] > min_x + self.contour_cutoff and point[0][1] > min_y + self.contour_cutoff:
                     cv2.circle(img, tuple(point[0]), 1, self.green, -1)
                     actual_contour_pts.append(point[0])
+####################################################################################################
 
+
+# DETERMINING INTERSECTION POINTS
+####################################################################################################
             # use slope + intercept to calculate points, check each one for a match on a contour point
-            line_points = np.array([ext_bbox_top_left, ext_bbox_bottom_right])
-            slope = (line_points[1][1] - line_points[0][1]) / (line_points[1][0] - line_points[0][0])
-            intercept = line_points[0][1] - slope * line_points[0][0]
-            ints = []
-            top_right_intersection = None
-            for point in actual_contour_pts:
-                if abs(point[1] - (slope * point[0] + intercept)) < 3:
-                    ints.append(point)
-            # set the top_right_intersedction to be the point in ints with the largest x and y values
-            if len(ints) > 0:
-                top_right_intersection = ints[0]
-                for point in ints:
-                    if point[0] > top_right_intersection[0] and point[1] > top_right_intersection[1]:
-                        top_right_intersection = point
-                cv2.circle(img, tuple(top_right_intersection), 5, self.yellow, 3)
-            
-            # same process for the hip line
-            line_points = np.array([
-                (
-                    int(self.hip[0]),
-                    int(self.hip[1])
-                ),
-                (
-                    ext_bbox_bottom_left[0],
-                    chosen_y_pos
-                )
-            ])
-            slope = (line_points[1][1] - line_points[0][1]) / (line_points[1][0] - line_points[0][0])
-            intercept = line_points[0][1] - slope * line_points[0][0]
-            ints = []
-            bottom_left_intersection = None
-            for point in actual_contour_pts:
-                if abs(point[1] - (slope * point[0] + intercept)) < 3:
-                    ints.append(point)
-            # set the top_right_intersedction to be the point in ints with the largest x and y values
-            if len(ints) > 0:
-                bottom_left_intersection = ints[0]
-                for point in ints:
-                    if point[0] > bottom_left_intersection[0] and point[1] > bottom_left_intersection[1]:
-                        bottom_left_intersection = point
-                cv2.circle(img, tuple(bottom_left_intersection), 5, self.yellow, 3)
-
+            top_right_intersection = self.determine_intersect(
+                img,
+                [ext_bbox_top_left, ext_bbox_bottom_right],
+                actual_contour_pts
+            )
+            bottom_left_intersection = self.determine_intersect(
+                img,
+                [
+                    (int(self.hip[0]), int(self.hip[1])),
+                    (ext_bbox_bottom_left[0], chosen_y_pos)
+                ],
+                actual_contour_pts
+            )
             if top_right_intersection is None or bottom_left_intersection is None:
                 return
+###################################################################################################
+
+
+# LUMBAR SPINE THRESHOLDING
+###################################################################################################
             # draw the new bounding box
             cv2.rectangle(
                 img=img, color=self.light_green, thickness=2,
@@ -429,6 +420,8 @@ class PoseAnalyzer:
                 top_right_intersection[1]:bottom_left_intersection[1], # y1:y2
                 bottom_left_intersection[0]:top_right_intersection[0] # x1:x2
             ]
+            if (region.shape[0] == 0 or region.shape[1] == 0):
+                return
             blurred = cv2.GaussianBlur(region,(5,5),0)
             ret, thresh = cv2.threshold(blurred, self.thresh_val_refine, 255, cv2.THRESH_BINARY)
             thresh = cv2.bitwise_not(thresh)
@@ -444,7 +437,11 @@ class PoseAnalyzer:
                 measured_area = cv2.contourArea(contour)
             else:
                 return
+###################################################################################################
 
+
+# COMPARISON WITH 'IDEAL' STRAIGHT BACK
+###################################################################################################
             # draw a triangle representing the ideal back
             ideal_back = np.array([
                 (bottom_left_intersection[0] - self.estimation_extension, bottom_left_intersection[1]),
@@ -461,12 +458,19 @@ class PoseAnalyzer:
                 avg = round(sum(self.eval_list) / len(self.eval_list), 2)
             else:
                 avg = round(sum(self.eval_list[self.successful_eval_count - self.running_avg_amount:self.successful_eval_count]) / self.running_avg_amount, 2)
+            # print(f"measured area: {measured_area}, perfect area: {perfect_area}")
+            # print(f"coeff: {coeff}, avg: {avg}")
             cur_eval = "straight"
             cur_color = self.light_aqua
             if (avg > self.round_thresh):
                 cur_eval = "rounded"
                 cur_color = self.light_red
             # write that to the top right
+###################################################################################################
+
+
+# DISPLAYING RESULTS
+###################################################################################################
             cv2.putText(
                 img=img, text=f"RA Score: {avg}",
                 org=(10, 30), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=self.light_purple, thickness=2,
@@ -484,14 +488,23 @@ class PoseAnalyzer:
                 lineType=cv2.LINE_AA
             )
 
-        # steps to identify lumbar spine:
-        # 1. arbtrarily extend the bounding box up and left
-        # 2. draw a line from the top left to the bottom right of the new bounding box
-        # 3. extend the line from the hip to the left of the bounding box, y coordinate determined from body intersection
-        # 4. identify where line 2 and line 3 intersect with the edges of the back (found using edge detection)
-        # 5. use those two points as corners for the new bounding box
-        # 6. draw a line from the bottom left to the top right of the new bounding box (this is the 'ideal' back straightness)
-        # 7. calculate the contour area of the back versus the ideal back (gini coefficient)
+    def determine_intersect(self, img, line_endpoints, contour_pts):
+        slope = (line_endpoints[1][1] - line_endpoints[0][1]) / (line_endpoints[1][0] - line_endpoints[0][0])
+        intercept = line_endpoints[0][1] - slope * line_endpoints[0][0]
+        intersections = []
+        for point in contour_pts:
+            if abs(point[1] - (slope * point[0] + intercept)) < 3:
+                intersections.append(point)
+        # set the top_right_intersedction to be the point in ints with the largest x and y values
+        if len(intersections) > 0:
+            closest_intersect = intersections[0]
+            for point in intersections:
+                if point[0] > closest_intersect[0] and point[1] > closest_intersect[1]:
+                    closest_intersect = point
+            cv2.circle(img, tuple(closest_intersect), 5, self.yellow, 3)
+            return closest_intersect
+        return None
+        
 
 # todo:
 # contour analysis along back
@@ -503,8 +516,8 @@ class PoseAnalyzer:
 
 
 pose_analyzer = PoseAnalyzer(
-    in_path='longer_ex.mp4',
-    out_path='longer_ex_out.mp4',
+    in_path='good_bad.mp4',
+    out_path='good_bad_out.mp4',
 
     contour_bbox_ext=1.2,
     contour_bbox_min=40,
@@ -512,8 +525,8 @@ pose_analyzer = PoseAnalyzer(
     thresh_val_refine=210,
     erosion_steps=4,
     contour_cutoff=10,
-    estimation_extension=2,
-    round_thresh=0.18,
+    estimation_extension=1,
+    round_thresh=0.16,
     running_avg_amount=2,
 
     static_image_mode=False,
