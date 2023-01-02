@@ -3,18 +3,7 @@ import math
 from tqdm import tqdm
 import mediapipe as mp
 import numpy as np
-
-def dist_formula(x1, y1, x2, y2):
-    return math.sqrt((x2-x1)**2+(y2-y1)**2)
-
-def findAngle(x1, y1, x2, y2):
-    # find angle using law of cosines
-    theta = math.acos(
-        (y2 - y1) * (-y1) /
-        (math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2) * y1)
-    )
-    return int(180/math.pi)*theta
-
+import onnxruntime as ort
 
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(
@@ -26,7 +15,26 @@ pose = mp_pose.Pose(
 )
 
 class PoseAnalyzer:
-    def __init__(self, in_path, out_path, contour_bbox_min, thresh_val_init, erosion_steps, contour_cutoff, thresh_val_refine, estimation_extension, round_thresh, running_avg_amount, static_image_mode, model_complexity, enable_segmentation, min_detection_confidence, min_tracking_confidence):
+    def __init__(self, in_path, out_path, session, distance_threshold, bar_window_size, contour_bbox_min, thresh_val_init, erosion_steps, contour_cutoff, thresh_val_refine, estimation_extension, round_thresh, running_avg_amount, static_image_mode, model_complexity, enable_segmentation, min_detection_confidence, min_tracking_confidence):
+        self.light_red = (204, 36, 29)
+        self.light_green = (152, 151, 26)
+        self.light_yellow = (215, 153, 33)
+        self.light_blue = (69, 133, 136)
+        self.light_purple = (177, 98, 134)
+        self.light_aqua = (104, 157, 106)
+        self.light_orange = (214, 93, 14)
+        self.red = (157, 0, 6)
+        self.green = (121, 116, 14)
+        self.yellow = (181, 118, 20)
+        self.blue = (7, 102, 120)
+        self.purple = (143, 63, 113)
+        self.aqua = (66, 123, 88)
+        self.orange = (175, 58, 3)
+        self.bright_red = (255, 0, 0)
+        self.bright_green = (0, 255, 0)
+        self.black = (0, 0, 0)
+        self.white = (255, 255, 255)
+
         # video setup
         self.in_path = in_path
         self.out_path = out_path
@@ -72,26 +80,21 @@ class PoseAnalyzer:
         )
         self.shoulder = self.elbow = self.wrist = self.hip = self.knee = self.ankle = self.heel = self.toe = self.nose = self.eye = None
 
-        # colors, from gruvbox light theme
-        self.light_red = (204, 36, 29)
-        self.light_green = (152, 151, 26)
-        self.light_yellow = (215, 153, 33)
-        self.light_blue = (69, 133, 136)
-        self.light_purple = (177, 98, 134)
-        self.light_aqua = (104, 157, 106)
-        self.light_orange = (214, 93, 14)
-        self.red = (157, 0, 6)
-        self.green = (121, 116, 14)
-        self.yellow = (181, 118, 20)
-        self.blue = (7, 102, 120)
-        self.purple = (143, 63, 113)
-        self.aqua = (66, 123, 88)
-        self.orange = (175, 58, 3)
-        self.bright_red = (255, 0, 0)
-        self.bright_green = (0, 255, 0)
-        self.black = (0, 0, 0)
+        # yolo
+        self.session = session
+        self.cls_names = ["weight", "bar"]
+        self.cls_colors = {
+            self.cls_names[0]: self.light_red,
+            self.cls_names[1]: self.red
+        }
+        self.bar_pt_list = []
+        self.weight_pt_list = []
+        self.distance_threshold = distance_threshold
+        self.bar_window_size = bar_window_size
 
     def fully_analyze(self):
+        print("initial analysis...")
+        img_list = []
         for i in tqdm(range(self.video_length)):
             # IMPORT
             # read frame and convert to RGB
@@ -112,12 +115,41 @@ class PoseAnalyzer:
             self.draw_points(img)
 
             # ANALYSIS
+            # draw the contour of the back and evaluate
             self.back_contour(img, img_orig)
+            # evalate position of bar and weight using yolo
+            self.yolo_annotate(img, img_orig)
 
             # EXPORT
-            # write the frame # onto the video
-            # cv2.putText(img, str(i), (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            # write the frame # bottom left of the video
+            cv2.putText(img, f"Frame: {i}", (20, self.h - 20), cv2.FONT_HERSHEY_SIMPLEX, 1, self.white, 1, cv2.LINE_AA)
             # convert back to BGR and save the frame
+            img_list.append(img)
+
+        print("refining...")
+        # yolo similar keypoint rejection
+        filtered_weight_pts = self.remove_close_points(self.weight_pt_list, self.distance_threshold)
+        filtered_bar_pts = self.remove_close_points(self.bar_pt_list, self.distance_threshold)
+        # s_f_weight_pts = self.smooth_points(filtered_weight_pts, self.bar_window_size)
+        # s_f_bar_pts = self.smooth_points(filtered_bar_pts, self.bar_window_size)
+        for i in tqdm(range(len(img_list))):
+            img = img_list[i]
+            cv2.polylines(
+                img=img,
+                pts=[np.array(filtered_weight_pts)],
+                isClosed=False,
+                color=self.light_red,
+                thickness=5,
+                lineType=cv2.LINE_AA
+            )
+            cv2.polylines(
+                img=img,
+                pts=[np.array(filtered_bar_pts)],
+                isClosed=False,
+                color=self.red,
+                thickness=5,
+                lineType=cv2.LINE_AA
+            )
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             self.video_output.write(img)
 
@@ -341,7 +373,7 @@ class PoseAnalyzer:
         nearest_point = (0, 0)
         dist = 600
         for point in pass_1:
-            cur_dist = dist_formula(middle_x, middle_y, point[0], point[1])
+            cur_dist = math.sqrt((point[0] - middle_x)**2 + (point[1] - middle_y)**2)
             if cur_dist < dist:
                 dist = cur_dist
                 nearest_point = point
@@ -432,6 +464,86 @@ class PoseAnalyzer:
             return closest_intersect
         return None
 
+    # pre-processing for yolo, from their github
+    def yolo_pre(self, im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scaleup=True, stride=32):
+        shape = im.shape[:2]
+        if isinstance(new_shape, int):
+            new_shape = (new_shape, new_shape)
+        r = min(new_shape[0] / shape[0], new_shape[1] / shape[1])
+        if not scaleup: r = min(r, 1.0)
+        new_unpad = int(round(shape[1] * r)), int(round(shape[0] * r))
+        dw, dh = new_shape[1] - new_unpad[0], new_shape[0] - new_unpad[1]
+        if auto: dw, dh = np.mod(dw, stride), np.mod(dh, stride)
+        dw /= 2
+        dh /= 2
+        if shape[::-1] != new_unpad:
+            im = cv2.resize(im, new_unpad, interpolation=cv2.INTER_LINEAR)
+        top, bottom = int(round(dh - 0.1)), int(round(dh + 0.1))
+        left, right = int(round(dw - 0.1)), int(round(dw + 0.1))
+        im = cv2.copyMakeBorder(im, top, bottom, left, right, cv2.BORDER_CONSTANT, value=color)
+        return im, r, (dw, dh)
+
+    def yolo_annotate(self, img, img_orig):
+        image, ratio, dwdh = self.yolo_pre(img_orig, auto=False)
+        image = image.transpose((2, 0, 1))
+        image = np.expand_dims(image, 0)
+        image = np.ascontiguousarray(image)
+        im = image.astype(np.float32)
+        im /= 255
+        outname = [i.name for i in self.session.get_outputs()]
+        inname = [i.name for i in self.session.get_inputs()]
+        inp = {inname[0]:im}
+        outputs = self.session.run(outname, inp)[0]
+        ori_images = [img_orig]
+        for i,(batch_id,x0,y0,x1,y1,cls_id,score) in enumerate(outputs):
+            box = np.array([x0,y0,x1,y1])
+            box -= np.array(dwdh*2)
+            box /= ratio
+            box = box.round().astype(np.int32).tolist()
+            cls_id = int(cls_id)
+            if (cls_id) == 0:
+                self.weight_pt_list.append(((box[0] + box[2]) // 2, (box[1] + box[3]) // 2))
+            else:
+                self.bar_pt_list.append(((box[0] + box[2]) // 2, (box[1] + box[3]) // 2))
+            cv2.rectangle(
+                img=img,
+                pt1=box[:2],
+                pt2=box[2:],
+                color=self.cls_colors[self.cls_names[cls_id]],
+                thickness=3
+            )
+
+    def remove_close_points(self, points, threshold):
+        filtered_points = []
+        for i, p1 in enumerate(points):
+            should_add_point = True
+            for j, p2 in enumerate(points):
+                if i == j:
+                    continue
+                if math.hypot(p1[0] - p2[0], p1[1] - p2[1]) < threshold:
+                    should_add_point = False
+                    break
+            if should_add_point:
+                filtered_points.append(p1)
+        return filtered_points
+
+    def smooth_points(self, points, window_size):
+        smoothed_points = []
+        for i in range(len(points)):
+            # Compute the average of the point and its neighbors
+            average = points[0]
+            num_neighbors = 1
+            for j in range(1, window_size + 1):
+                if i - j >= 0:
+                    average = tuple(map(sum, zip(average, points[i - j])))
+                    num_neighbors += 1
+                if i + j < len(points):
+                    average = tuple(map(sum, zip(average, points[i + j])))
+                    num_neighbors += 1
+            average = tuple(x / num_neighbors for x in average)
+            smoothed_points.append(average)
+        return np.array(smoothed_points, np.int32)
+
 
 # todo:
 # contour analysis along back
@@ -442,9 +554,16 @@ class PoseAnalyzer:
 # butt tracker, shoulder tracker (keypoints)
 
 
+providers = ['CUDAExecutionProvider']
+session = ort.InferenceSession("./models/yolov7_weight.onnx", providers=providers)
+
 pose_analyzer = PoseAnalyzer(
-    in_path='all.mp4',
-    out_path='all_out.mp4',
+    in_path='./videos/deadlift.mp4',
+    out_path='./videos/deadlift_out.mp4',
+
+    session=session,
+    distance_threshold=2,
+    bar_window_size=2,
 
     contour_bbox_min=20,
     thresh_val_init=200,
