@@ -156,6 +156,8 @@ class PoseAnalyzer:
                 pt3=[int(self.wrist[0]), int(self.wrist[1])],
                 radius=self.annotation_radius,
             )
+            if (elbow_angle < self.elbow_angle_threshold):
+                self.failed_elbow_check = True
 
             # evalate position of bar and weight using yolo
             self.yolo_annotate(img, img_orig, knee_angle)
@@ -316,6 +318,7 @@ class PoseAnalyzer:
         )
         # continue only if the horizontal distance of the extension is > self.contour_bbox_min
         if abs(self.shoulder[0] - self.hip[0]) < self.contour_bbox_min:
+            self.write_contour_text(img, "None")
             return
 ################################################################################################
 
@@ -438,30 +441,33 @@ class PoseAnalyzer:
             avg = round(sum(self.eval_list[self.successful_eval_count - self.running_avg_amount:self.successful_eval_count]) / self.running_avg_amount, 2)
         # print(f"measured area: {measured_area}, perfect area: {perfect_area}")
         # print(f"coeff: {coeff}, avg: {avg}")
+###################################################################################################
+
+        self.write_contour_text(img, avg)
+
+    def write_contour_text(self, img, avg):
         cur_eval = "straight"
         cur_color = self.light_aqua
-        if (avg > self.round_thresh):
-            cur_eval = "rounded"
-            cur_color = self.light_red
-###################################################################################################
-
-
-# DISPLAYING RESULTS
-###################################################################################################
+        if (avg == "None"):
+            cur_eval = "none"
+            cur_color = self.light_blue
+        else:
+            if (avg > self.round_thresh):
+                cur_eval = "rounded"
+                cur_color = self.light_red
         cv2.putText(
             img=img, text=f"LS Score: {avg}",
-            org=(10, 30), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=self.light_purple, thickness=2,
+            org=(15, 30), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=self.light_purple, thickness=2,
             lineType=cv2.LINE_AA
         )
-        # put "lower is better"
         cv2.putText(
             img=img, text="(lower is better)",
-            org=(20, 50), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.75, color=self.light_red, thickness=1,
+            org=(20, 55), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.75, color=self.light_red, thickness=1,
             lineType=cv2.LINE_AA
         )
         cv2.putText(
             img=img, text=f"Evaluation: {cur_eval}",
-            org=(275, 30), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.9, color=cur_color, thickness=2,
+            org=(275, 30), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=cur_color, thickness=2,
             lineType=cv2.LINE_AA
         )
 
@@ -585,7 +591,7 @@ class PoseAnalyzer:
             cv2.putText(
                 img=img,
                 text=f"bar: {stddev}",
-                org=(self.w - 160, self.h - 5),
+                org=(15, 85),
                 fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                 fontScale=1,
                 color=text_color,
@@ -596,7 +602,7 @@ class PoseAnalyzer:
                 cv2.putText(
                     img=img,
                     text="straightened knee too early",
-                    org=(10, 75),
+                    org=(15, 105),
                     fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                     fontScale=0.75,
                     color=self.red,
@@ -607,14 +613,35 @@ class PoseAnalyzer:
                 cv2.putText(
                     img=img,
                     text="knee acceptable",
-                    org=(10, 75),
+                    org=(15, 105),
                     fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                    fontScale=1,
+                    fontScale=0.75,
                     color=self.light_aqua,
-                    thickness=2,
+                    thickness=1,
                     lineType=cv2.LINE_AA
                 )
-
+            if (self.failed_elbow_check):
+                cv2.putText(
+                    img=img,
+                    text="arms shouldn't be pulling",
+                    org=(15, 125),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=0.75,
+                    color=self.red,
+                    thickness=1,
+                    lineType=cv2.LINE_AA
+                )
+            else:
+                cv2.putText(
+                    img=img,
+                    text="arms acceptable",
+                    org=(15, 125),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=0.75,
+                    color=self.light_aqua,
+                    thickness=1,
+                    lineType=cv2.LINE_AA
+                )
             cv2.polylines(
                 img=img,
                 pts=[np_s_f_bar_pts],
@@ -739,7 +766,7 @@ session = ort.InferenceSession("./models/yolov7_weight.onnx", providers=provider
 
 pose_analyzer = PoseAnalyzer(
     video_folder='./videos/',
-    in_path='deadlift.mp4',
+    in_path='short.mp4',
 
     session=session,
     distance_threshold=2,
