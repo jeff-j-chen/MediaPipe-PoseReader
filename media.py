@@ -15,7 +15,7 @@ pose = mp_pose.Pose(
 )
 
 class PoseAnalyzer:
-    def __init__(self, video_folder, in_path, session, distance_threshold, bar_window_size, bar_stddev_threshold, contour_bbox_min, thresh_val_init, erosion_steps, contour_cutoff, round_thresh, running_avg_amount, static_image_mode, model_complexity, enable_segmentation, min_detection_confidence, min_tracking_confidence):
+    def __init__(self, video_folder, in_path, session, distance_threshold, bar_window_size, bar_stddev_threshold, annotation_radius, knee_angle_threshold, elbow_angle_threshold, contour_bbox_min, thresh_val_init, erosion_steps, contour_cutoff, round_thresh, running_avg_amount, static_image_mode, model_complexity, enable_segmentation, min_detection_confidence, min_tracking_confidence):
         self.light_red = (204, 36, 29)
         self.light_green = (152, 151, 26)
         self.light_yellow = (215, 153, 33)
@@ -108,6 +108,14 @@ class PoseAnalyzer:
         # cutoff for 'good' vs 'bad' bar path
         self.bar_stddev_threshold = bar_stddev_threshold
 
+        # knee and elbow
+        # how large to draw the arc for the angle of 3 points
+        self.annotation_radius = annotation_radius
+        self.knee_angle_threshold = knee_angle_threshold
+        self.failed_knee_check = False
+        self.elbow_angle_threshold = elbow_angle_threshold
+        self.failed_elbow_check = False
+
     def fully_analyze(self):
         print("initial analysis...")
         img_list = []
@@ -133,22 +141,29 @@ class PoseAnalyzer:
             # ANALYSIS
             # draw the contour of the back and evaluate
             self.back_contour(img, img_orig)
+
+            knee_angle = self.annotate_angle(
+                img, color=self.blue, l_or_r="l",
+                pt1=[int(self.hip[0]), int(self.hip[1])],
+                pt2=[int(self.knee[0]), int(self.knee[1])],
+                pt3=[int(self.ankle[0]), int(self.ankle[1])],
+                radius=self.annotation_radius,
+            )
+            elbow_angle = self.annotate_angle(
+                img, color=self.green, l_or_r="r",
+                pt1=[int(self.shoulder[0]), int(self.shoulder[1])],
+                pt2=[int(self.elbow[0]), int(self.elbow[1])],
+                pt3=[int(self.wrist[0]), int(self.wrist[1])],
+                radius=self.annotation_radius,
+            )
+
             # evalate position of bar and weight using yolo
-            self.yolo_annotate(img, img_orig)
+            self.yolo_annotate(img, img_orig, knee_angle)
 
             # EXPORT
             # write the frame # bottom left of the video
-            cv2.putText(
-                img=img,
-                text=f"Frame: {i}",
-                org=(40, self.h - 5),
-                fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                fontScale=1,
-                color=self.white,
-                thickness=1,
-                lineType=cv2.LINE_AA
-            )
-            # convert back to BGR and save the frame
+            cv2.putText( img=img, text=f"Frame: {i}", org=(40, self.h - 5), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=self.white, thickness=1, lineType=cv2.LINE_AA)
+            # save the frame to a list for further processing
             img_list.append(img)
 
         print("refining...")
@@ -394,7 +409,7 @@ class PoseAnalyzer:
         lumbar_spine_contour = actual_contour_pts
         lumbar_spine_contour.append([top_right_intersection[0], bottom_left_intersection[1]])
         lumbar_spine_contour = np.array(lumbar_spine_contour)
-        cv2.fillPoly(img, [lumbar_spine_contour], self.bright_red)
+        cv2.fillPoly(img, [lumbar_spine_contour], self.light_red)
 
         # overlay the 'ideal' triangle on their back with green, only the red peeks through
         triangle_pts = [
@@ -403,7 +418,7 @@ class PoseAnalyzer:
             [top_right_intersection[0], bottom_left_intersection[1]],
         ]
         triangle_pts = np.array(triangle_pts)
-        cv2.fillPoly(img=img, pts=[triangle_pts], color=self.bright_green)
+        cv2.fillPoly(img=img, pts=[triangle_pts], color=self.light_aqua)
 ###################################################################################################
 
 
@@ -434,7 +449,7 @@ class PoseAnalyzer:
 # DISPLAYING RESULTS
 ###################################################################################################
         cv2.putText(
-            img=img, text=f"RA Score: {avg}",
+            img=img, text=f"LS Score: {avg}",
             org=(10, 30), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=self.light_purple, thickness=2,
             lineType=cv2.LINE_AA
         )
@@ -492,7 +507,7 @@ class PoseAnalyzer:
         return im, r, (dw, dh)
 
     # drawing the detected bounding boxes every frame
-    def yolo_annotate(self, img, img_orig):
+    def yolo_annotate(self, img, img_orig, knee_angle):
         image, ratio, dwdh = self.yolo_pre(img_orig, auto=False)
         image = image.transpose((2, 0, 1))
         image = np.expand_dims(image, 0)
@@ -509,6 +524,11 @@ class PoseAnalyzer:
             box /= ratio
             box = box.round().astype(np.int32).tolist()
             cls_id = int(cls_id)
+            center_pt = [(box[0] + box[2]) // 2, (box[1] + box[3]) // 2]
+            # if (cls_id) == 0:
+            #     self.weight_pt_list.append(center_pt)
+            # else:
+            #     self.bar_pt_list.append(center_pt)
             if (cls_id) == 0:
                 self.weight_pt_list.append(((box[0] + box[2]) // 2, (box[1] + box[3]) // 2))
             else:
@@ -520,6 +540,30 @@ class PoseAnalyzer:
                 color=self.cls_colors[self.cls_names[cls_id]],
                 thickness=3
             )
+            # draw a line from the center of the bounding box to the knee or hip, whichever is closer in the y axis\
+            # additionally, flag if the knee is straightened and the weight is closer to the knee than the hip, meaning that they straighted out too early and are placing excess strain on the lumbar spine
+            diff_hip = (box[1] + box[3]) // 2 - self.hip[1]
+            diff_knee = (box[1] + box[3]) // 2 - self.knee[1]
+            if (abs(diff_hip) < abs(diff_knee)):
+                cv2.line(
+                    img=img,
+                    pt1=center_pt,
+                    pt2=(int(self.hip[0]), int(self.hip[1])),
+                    color=self.cls_colors[self.cls_names[cls_id]],
+                    thickness=2,
+                    lineType=cv2.LINE_AA,
+                )
+            else:
+                cv2.line(
+                    img=img,
+                    pt1=center_pt,
+                    pt2=(int(self.knee[0]), int(self.knee[1])),
+                    color=self.cls_colors[self.cls_names[cls_id]],
+                    thickness=2,
+                    lineType=cv2.LINE_AA
+                )
+                if (knee_angle > self.knee_angle_threshold):
+                    self.failed_knee_check = True
 
     # remove overlapping points, draw paths, calculate straightness, write to screen
     def full_yolo_process(self, img_list):
@@ -548,6 +592,29 @@ class PoseAnalyzer:
                 thickness=2,
                 lineType=cv2.LINE_AA
             )
+            if (self.failed_knee_check):
+                cv2.putText(
+                    img=img,
+                    text="straightened knee too early",
+                    org=(10, 75),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=0.75,
+                    color=self.red,
+                    thickness=1,
+                    lineType=cv2.LINE_AA
+                )
+            else:
+                cv2.putText(
+                    img=img,
+                    text="knee acceptable",
+                    org=(10, 75),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=1,
+                    color=self.light_aqua,
+                    thickness=2,
+                    lineType=cv2.LINE_AA
+                )
+
             cv2.polylines(
                 img=img,
                 pts=[np_s_f_bar_pts],
@@ -574,17 +641,17 @@ class PoseAnalyzer:
     # eliminates bar staying still and stationary weights
     def remove_close_points(self, points, threshold):
         filtered_points = []
-        for i, p1 in enumerate(points):
+        for i, pt1 in enumerate(points):
             should_add_point = True
-            for j, p2 in enumerate(points):
+            for j, pt2 in enumerate(points):
                 if i == j:
                     continue
                 # don't add points that are too close together
-                if abs(p1[1] - p2[1]) < threshold:
+                if abs(pt1[1] - pt2[1]) < threshold:
                     should_add_point = False
                     break
             if should_add_point:
-                filtered_points.append(p1)
+                filtered_points.append(pt1)
         return filtered_points
 
     # helper for path drawing, remove all points that are too far from the median in the x axis
@@ -612,13 +679,58 @@ class PoseAnalyzer:
             smoothed_points.append((int(points[i][0]), y))
         return smoothed_points
 
+    def annotate_angle(self, img, pt1, pt2, pt3, radius, color, l_or_r):
+        center = pt2
+        angle1 = int(math.degrees(math.atan2(pt1[1] - center[1], pt1[0] - center[0])))
+        angle2 = int(math.degrees(math.atan2(pt3[1] - center[1], pt3[0] - center[0])))
+        if (l_or_r == 'r'):
+            angle1, angle2 = angle2, angle1
+        else:
+            angle1 += 360
+        cv2.ellipse(
+            img=img,
+            center=center,
+            axes=(radius, radius),
+            angle=0,
+            startAngle=angle2,
+            endAngle=angle1,
+            color=color,
+            thickness=2,
+            lineType=cv2.LINE_AA
+        )
+
+        angle = math.degrees(math.atan2(pt2[1] - pt1[1], pt2[0] - pt1[0]) - math.atan2(pt3[1] - pt2[1], pt3[0] - pt2[0]))
+
+        x, y = pt2
+        draw_x = x
+        draw_y = y
+        if (l_or_r == 'l'):
+            angle += 180
+            draw_x -= 60
+        else:
+            angle = 180 - angle
+            draw_x += 27
+        draw_y += 7
+        cv2.putText(
+            img=img,
+            text=f"{round(angle)}",
+            org=(draw_x, draw_y),
+            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+            fontScale=0.5,
+            color=color,
+            thickness=1,
+            lineType=cv2.LINE_AA
+        )
+        return angle
+
 
 # todo:
-# contour analysis along back
-# bar path tracker (concentric circles, neural network??)
 # bar distance tracker (dist formula)
+    # only calculate when the knee is straightened out
 # heel lift (angles, contour analysis)
+    # only calculate when the foot's position is actually correct
 # arm pull (angles)
+    # angle of the elbowz
 # butt tracker, shoulder tracker (keypoints)
 
 
@@ -627,7 +739,7 @@ session = ort.InferenceSession("./models/yolov7_weight.onnx", providers=provider
 
 pose_analyzer = PoseAnalyzer(
     video_folder='./videos/',
-    in_path='rdl.mp4',
+    in_path='deadlift.mp4',
 
     session=session,
     distance_threshold=2,
@@ -645,6 +757,10 @@ pose_analyzer = PoseAnalyzer(
     model_complexity=2,
     enable_segmentation=False,
     min_detection_confidence=0.4,
-    min_tracking_confidence=0.8
+    min_tracking_confidence=0.8,
+
+    annotation_radius=20,
+    knee_angle_threshold=160,
+    elbow_angle_threshold=160,
 )
 pose_analyzer.fully_analyze()
