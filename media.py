@@ -5,6 +5,69 @@ import mediapipe as mp
 import numpy as np
 import onnxruntime as ort
 
+import torch
+import torch.nn as nn
+from torchvision import transforms
+
+class FaceDetector(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+        self._body = nn.Sequential(
+            nn.Conv2d(in_channels=3, out_channels=16, kernel_size=5),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(16),
+            nn.MaxPool2d(kernel_size=3),
+
+            nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(32),
+            nn.MaxPool2d(kernel_size=2),
+
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(64),
+            nn.MaxPool2d(kernel_size=2),
+        )
+        self._head = nn.Sequential(
+            nn.Linear(in_features=576, out_features=576),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(576),
+
+            nn.Linear(in_features=576, out_features=576),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(576),
+
+            nn.Linear(in_features=576, out_features=576),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(576),
+
+            nn.Linear(in_features=576, out_features=576),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(576),
+
+            nn.Linear(in_features=576, out_features=288),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(288),
+
+            nn.Linear(in_features=288, out_features=144),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(144),
+
+            nn.Linear(in_features=144, out_features=72),
+            nn.ReLU(inplace=True),
+            nn.BatchNorm1d(72),
+
+            nn.Linear(in_features=72, out_features=4),
+        )
+
+    def forward(self, x):
+        x = self._body(x)
+        x = x.view(x.size()[0], -1)
+        x = self._head(x)
+        return x
+
+
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(
     static_image_mode=False,
@@ -15,7 +78,7 @@ pose = mp_pose.Pose(
 )
 
 class PoseAnalyzer:
-    def __init__(self, video_folder, in_path, session, distance_threshold, bar_window_size, bar_stddev_threshold, annotation_radius, knee_angle_threshold, elbow_angle_threshold, heel_angle_threshold, toe_radius, contour_bbox_min, thresh_val_init, erosion_steps, contour_cutoff, round_thresh, running_avg_amount, static_image_mode, model_complexity, enable_segmentation, min_detection_confidence, min_tracking_confidence):
+    def __init__(self, video_folder, in_path, yolo_session, distance_threshold, bar_window_size, bar_stddev_threshold, annotation_radius, knee_angle_threshold, elbow_angle_threshold, heel_angle_threshold, toe_radius, contour_bbox_min, thresh_val_init, erosion_steps, contour_cutoff, round_thresh, running_avg_amount, static_image_mode, model_complexity, enable_segmentation, min_detection_confidence, min_tracking_confidence, use_back_contour, use_angles, use_yolo, use_face, use_start_end, face_model, face_bound, pt_trans, class_angle_dict):
         self.light_red = (204, 36, 29)
         self.light_green = (152, 151, 26)
         self.light_yellow = (215, 153, 33)
@@ -46,6 +109,13 @@ class PoseAnalyzer:
             frameSize=(self.w, self.h)
         )
         self.video_length = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+        # options
+        self.use_back_contour = use_back_contour
+        self.use_angles = use_angles
+        self.use_yolo = use_yolo
+        self.use_face = use_face
+        self.use_start_end = use_start_end
 
         # mediapipe settings
         self.static_image_mode = static_image_mode
@@ -90,7 +160,7 @@ class PoseAnalyzer:
 
         # yolo
         # required for evaluations
-        self.session = session
+        self.yolo_session = yolo_session
         # 0: weight, 1: bar
         self.cls_names = ["weight", "bar"]
         # colors for the classes
@@ -123,6 +193,11 @@ class PoseAnalyzer:
         self.heel_pos_list = []
         self.toe_radius = toe_radius
 
+        self.face_model = face_model
+        self.face_bound = face_bound
+        self.pt_trans = pt_trans
+        self.class_angle_dict = class_angle_dict
+
     def fully_analyze(self):
         print("initial analysis...")
         img_list = []
@@ -138,65 +213,69 @@ class PoseAnalyzer:
             keypoints = pose.process(img)
             # defines keypoints (self.shoulder, self.elbow, ...)
             lm = keypoints.pose_landmarks
+            if (lm is None):
+                continue
             lm_pose = mp_pose.PoseLandmark
             self.read_keypoints(lm, lm_pose)
-
             # ANNOTATIONS
             self.draw_lines(img)
             self.draw_points(img)
 
             # ANALYSIS
             # draw the contour of the back and evaluate
-            self.back_contour(img, img_orig)
+            if (self.use_back_contour):
+                self.back_contour(img, img_orig)
+
             # calculation of angles
-            knee_angle = self.annotate_angle(
-                img, color=self.blue, l_or_r="l",
-                pt1=[int(self.hip[0]), int(self.hip[1])],
-                pt2=[int(self.knee[0]), int(self.knee[1])],
-                pt3=[int(self.ankle[0]), int(self.ankle[1])],
-                radius=self.annotation_radius,
-            )
-            elbow_angle = self.annotate_angle(
-                img, color=self.green, l_or_r="r",
-                pt1=[int(self.shoulder[0]), int(self.shoulder[1])],
-                pt2=[int(self.elbow[0]), int(self.elbow[1])],
-                pt3=[int(self.wrist[0]), int(self.wrist[1])],
-                radius=self.annotation_radius,
-            )
-            # elbow check here, knee check is in yolo_annotate due to needed the bar position
-            if (elbow_angle < self.elbow_angle_threshold):
-                self.failed_elbow_check = True
-            # toe angle is drawn in 2nd pass because we first need to evaluate if the foot is occluded by the weight or not
-            # calculate and append to lists here
-            heel_angle = self.annotate_angle(
-                img, color=self.light_purple, l_or_r="l",
-                pt1=[int(self.heel[0]), int(self.heel[1])],
-                pt2=[int(self.toe[0]), int(self.toe[1])],
-                pt3=[int(self.heel[0]), int(self.toe[1])],
-                radius=self.annotation_radius,
-                draw=False,
-            )
-            self.heel_angle_list.append(heel_angle)
-            self.heel_pos_list.append(self.heel)
-            self.toe_pos_list.append(self.toe)
+            if (self.use_angles):
+                knee_angle = self.annotate_angle(
+                    img, color=self.blue, l_or_r="l",
+                    pt1=[int(self.hip[0]), int(self.hip[1])],
+                    pt2=[int(self.knee[0]), int(self.knee[1])],
+                    pt3=[int(self.ankle[0]), int(self.ankle[1])],
+                    radius=self.annotation_radius,
+                )
+                elbow_angle = self.annotate_angle(
+                    img, color=self.green, l_or_r="r",
+                    pt1=[int(self.shoulder[0]), int(self.shoulder[1])],
+                    pt2=[int(self.elbow[0]), int(self.elbow[1])],
+                    pt3=[int(self.wrist[0]), int(self.wrist[1])],
+                    radius=self.annotation_radius,
+                )
+                # elbow check here, knee check is in yolo_annotate due to needed the bar position
+                if (elbow_angle < self.elbow_angle_threshold):
+                    self.failed_elbow_check = True
+                # toe angle is drawn in 2nd pass because we first need to evaluate if the foot is occluded by the weight or not
+                # calculate and append to lists here
+                heel_angle = self.annotate_angle(
+                    img, color=self.light_purple, l_or_r="l",
+                    pt1=[int(self.heel[0]), int(self.heel[1])],
+                    pt2=[int(self.toe[0]), int(self.toe[1])],
+                    pt3=[int(self.heel[0]), int(self.toe[1])],
+                    radius=self.annotation_radius,
+                    draw=False,
+                )
+                self.heel_angle_list.append(heel_angle)
+                self.heel_pos_list.append(self.heel)
+                self.toe_pos_list.append(self.toe)
 
             # evalate position of bar and weight using yolo
-            self.yolo_annotate(img, img_orig, knee_angle)
+            if (self.use_yolo):
+                self.yolo_annotate(img, img_orig, knee_angle)
+
+            if (self.use_face):
+                self.annotate_face(img, img_orig)
 
             # EXPORT
             # write the frame # bottom left of the video
             self.text( img=img, text=f"Frame: {i}", org=(40, self.h - 5), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=self.white, thickness=1, lineType=cv2.LINE_AA)
             # save the frame to a list for further processing
             img_list.append(img)
-
         print("refining...")
         self.second_pass(img_list)
 
     # define keypoints from mediapose with variable names
     def read_keypoints(self, lm, lmPose):
-        if (lm is None):
-            print('fail')
-            return
         self.shoulder = [lm.landmark[lmPose.RIGHT_SHOULDER].x   * self.w, lm.landmark[lmPose.RIGHT_SHOULDER].y   * self.h]
         self.elbow    = [lm.landmark[lmPose.RIGHT_ELBOW].x      * self.w, lm.landmark[lmPose.RIGHT_ELBOW].y      * self.h]
         self.wrist    = [lm.landmark[lmPose.RIGHT_WRIST].x      * self.w, lm.landmark[lmPose.RIGHT_WRIST].y      * self.h]
@@ -438,6 +517,8 @@ class PoseAnalyzer:
         # compare aeras
         measured_area = cv2.contourArea(lumbar_spine_contour)
         perfect_area = cv2.contourArea(triangle_pts)
+        if (perfect_area == 0):
+            perfect_area = 1
         coeff = round(measured_area / perfect_area - 1, 2)
         self.eval_list.append(coeff)
         self.successful_eval_count += 1
@@ -464,6 +545,7 @@ class PoseAnalyzer:
             if (avg > self.round_thresh):
                 cur_eval = "rounded"
                 cur_color = self.light_red
+        avg = 0.
         self.text(
             img=img, text=f"back {cur_eval} ({avg:.2f})",
             org=(15, 30), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=cur_color, thickness=2,
@@ -520,11 +602,13 @@ class PoseAnalyzer:
         image = np.ascontiguousarray(image)
         im = image.astype(np.float32)
         im /= 255
-        outname = [i.name for i in self.session.get_outputs()]
-        inname = [i.name for i in self.session.get_inputs()]
+        outname = [i.name for i in self.yolo_session.get_outputs()]
+        inname = [i.name for i in self.yolo_session.get_inputs()]
         inp = {inname[0]:im}
-        outputs = self.session.run(outname, inp)[0]
+        outputs = self.yolo_session.run(outname, inp)[0]
         # actual annotation
+        bar_count = 0
+        weight_count = 0
         for i,(batch_id,x0,y0,x1,y1,cls_id,score) in enumerate(outputs):
             box = np.array([x0,y0,x1,y1])
             box -= np.array(dwdh*2)
@@ -532,8 +616,12 @@ class PoseAnalyzer:
             box = box.round().astype(np.int32).tolist()
             cls_id = int(cls_id)
             center_pt = [(box[0] + box[2]) // 2, (box[1] + box[3]) // 2]
-            if (cls_id) == 0: self.weight_pt_list.append(center_pt)
-            else: self.bar_pt_list.append(center_pt)
+            if (cls_id) == 0:
+                self.weight_pt_list.append(center_pt)
+                weight_count += 1
+            else: 
+                self.bar_pt_list.append(center_pt)
+                bar_count += 1
             cv2.rectangle(
                 img=img,
                 pt1=box[:2],
@@ -565,170 +653,211 @@ class PoseAnalyzer:
                 )
                 if (knee_angle > self.knee_angle_threshold):
                     self.failed_knee_check = True
+        if (bar_count == 0):
+            self.bar_pt_list.append([600, 600])
+        if (weight_count == 0):
+            self.weight_pt_list.append([600, 600])
 
     # yolo, remove overlapping points, draw paths, calculate straightness, annotate second round stuff, write to screen
     def second_pass(self, img_list):
         # process the points so that the bar path is good
         filtered_bar_pts = self.remove_close_points(self.bar_pt_list, self.distance_threshold)
-        if (len(filtered_bar_pts) == 0):
-            return
-        filtered2_bar_pts = self.remove_outliers(filtered_bar_pts, 50)
-        s_f_bar_pts = self.smooth_horizontally(filtered2_bar_pts, self.bar_window_size)
-        np_s_f_bar_pts = np.array(s_f_bar_pts)
-        x_coords = np_s_f_bar_pts[:, 0]
-        # draw a straight line upwards through the median, representing a 'good' bar path
-        median_x = sorted(x_coords)[len(x_coords) // 2]
-        min_y = min(np_s_f_bar_pts[:, 1])
-        max_y = max(np_s_f_bar_pts[:, 1])
-        # calculate the stddev of the actual bar path compared to the 'good' bar path
-        stddev = round(np.std(x_coords - median_x), 1)
-        # color the text based on bar path
-        text = "good bar path " if stddev < self.bar_stddev_threshold else "bad bar path "
-        text_color = self.light_red if stddev > self.bar_stddev_threshold else self.light_aqua
+        if (len(filtered_bar_pts) > 0):
+            filtered2_bar_pts = self.remove_outliers(filtered_bar_pts, 50)
+            s_f_bar_pts = self.smooth_horizontally(filtered2_bar_pts, self.bar_window_size)
+            np_s_f_bar_pts = np.array(s_f_bar_pts)
+            x_coords = np_s_f_bar_pts[:, 0]
+            # draw a straight line upwards through the median, representing a 'good' bar path
+            median_x = sorted(x_coords)[len(x_coords) // 2]
+            min_y = min(np_s_f_bar_pts[:, 1])
+            max_y = max(np_s_f_bar_pts[:, 1])
+            # calculate the stddev of the actual bar path compared to the 'good' bar path
+            stddev = round(np.std(x_coords - median_x), 1)
+            # color the text based on bar path
+            text = "good bar path " if stddev < self.bar_stddev_threshold else "bad bar path "
+            text_color = self.light_red if stddev > self.bar_stddev_threshold else self.light_aqua
 
         # foot is inconsistently detected when occluded by the weight, so only calculate foot angle when not occluded
         # occlusion is determined by checking if the foot is close to its "regular" position, if occluded the position signficiantly deviates from the median
-        failed_heel_check = False
-        median_foot_point = self.toe_pos_list[len(self.toe_pos_list) // 2]
-        for i in range(len(self.heel_angle_list)):
-            angle = self.heel_angle_list[i]
-            toe = self.toe_pos_list[i]
-            if ((math.sqrt((median_foot_point[0] - toe[0]) ** 2 + (median_foot_point[1] - toe[1]) ** 2) < self.toe_radius)):
-                if (angle > self.heel_angle_threshold):
-                    failed_heel_check = True
+        if (self.use_angles):
+            failed_heel_check = False
+            median_foot_point = self.toe_pos_list[len(self.toe_pos_list) // 2]
+            for i in range(len(self.heel_angle_list)):
+                angle = self.heel_angle_list[i]
+                toe = self.toe_pos_list[i]
+                if ((math.sqrt((median_foot_point[0] - toe[0]) ** 2 + (median_foot_point[1] - toe[1]) ** 2) < self.toe_radius)):
+                    if (angle > self.heel_angle_threshold):
+                        failed_heel_check = True
+                        break
+
+        # if we want to crop the start and end of the lift
+        if (self.use_start_end):
+            # calculate the difference in bar position at every frame
+            bar_diffs = []
+            for i in range(len(self.bar_pt_list) - 1):
+                bar_diffs.append(self.bar_pt_list[i + 1][1] - self.bar_pt_list[i][1])
+            start = 0
+            # start is declared when there are 3 consecutive frames of upward bar movement
+            for i in range(len(bar_diffs) - 2):
+                if (bar_diffs[i] < 0 and bar_diffs[i + 1] < 0 and bar_diffs[i + 2] < 0):
+                    start = i
+                    break
+            # mark the as the frame where the bar reaches its highest point
+            # remember that the smaller the y is, the higher in the image it is
+            highest_bar_y = min(np.array(self.bar_pt_list)[:, 1])
+            end = 0
+            for i in range(len(self.bar_pt_list)):
+                if (self.bar_pt_list[i][1] <= highest_bar_y):
+                    end = i
                     break
 
-        for i in tqdm(range(len(img_list))):
+        # only output between the start and end frames
+        for i in tqdm(range(start, end+1)):
             img = img_list[i]
 
-            # bar text
-            self.text(
-                img=img,
-                text=f"{text} ({stddev:.2f})",
-                org=(15, 60),
-                fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                fontScale=1,
-                color=text_color,
-                thickness=2,
-                lineType=cv2.LINE_AA
-            )
-            # knee text
-            if (self.failed_knee_check):
-                self.text(
+            if (self.use_angles):
+                # knee text
+                if (self.failed_knee_check):
+                    self.text(
+                        img=img,
+                        text="knee was straightened too early",
+                        org=(15, 85),
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=0.85,
+                        color=self.light_red,
+                        thickness=2,
+                        lineType=cv2.LINE_AA
+                    )
+                else:
+                    self.text(
+                        img=img,
+                        text="knee was acceptable",
+                        org=(15, 85),
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=0.85,
+                        color=self.light_aqua,
+                        thickness=2,
+                        lineType=cv2.LINE_AA
+                    )
+                # elbow text
+                if (self.failed_elbow_check):
+                    self.text(
+                        img=img,
+                        text="arm was pulling",
+                        org=(15, 105),
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=0.85,
+                        color=self.light_red,
+                        thickness=2,
+                        lineType=cv2.LINE_AA
+                    )
+                else:
+                    self.text(
+                        img=img,
+                        text="arm was acceptable",
+                        org=(15, 105),
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=0.85,
+                        color=self.light_aqua,
+                        thickness=2,
+                        lineType=cv2.LINE_AA
+                    )
+
+                # circle around the median foot point, makes it visually clear when and why the angle is being calculated
+                cv2.circle(
                     img=img,
-                    text="knee was straightened too early",
-                    org=(15, 85),
-                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                    fontScale=0.85,
+                    center=(int(median_foot_point[0]), int(median_foot_point[1])),
+                    radius=self.toe_radius,
                     color=self.light_red,
                     thickness=2,
                     lineType=cv2.LINE_AA
                 )
-            else:
+                # only draw the angle if foot is not occluded
+                toe = self.toe_pos_list[i]
+                heel = self.heel_pos_list[i]
+                if (math.sqrt((median_foot_point[0] - toe[0]) ** 2 + (median_foot_point[1] - toe[1]) ** 2) < self.toe_radius):
+                    # horizontal line from heel to toe
+                    cv2.line(
+                        img=img,
+                        pt1=(int(toe[0]), int(toe[1])),
+                        pt2=(int(heel[0]), int(toe[1])),
+                        color=self.red,
+                        thickness=2,
+                        lineType=cv2.LINE_AA
+                    )
+                    # angle annotation
+                    self.annotate_angle(
+                        img, color=self.bright_red, l_or_r="l",
+                        pt1=[int(heel[0]), int(heel[1])],
+                        pt2=[int(toe[0]), int(toe[1])],
+                        pt3=[int(heel[0]), int(toe[1])],
+                        radius=self.annotation_radius,
+                        extra_offset=True
+                    )
+                # heel text
+                if (failed_heel_check):
+                    self.text(
+                        img=img,
+                        text="heel was lifted",
+                        org=(15, 125),
+                        color=self.light_red,
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=0.75,
+                        thickness=2,
+                        lineType=cv2.LINE_AA
+                    )
+                else:
+                    self.text(
+                        img=img,
+                        text="heel was acceptable",
+                        org=(15, 125),
+                        color=self.light_aqua,
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=0.75,
+                        thickness=2,
+                        lineType=cv2.LINE_AA
+                    )
+
+            # bar paths
+            if (self.use_yolo and len(self.bar_pt_list) > 0):
+                # bar path
+                cv2.polylines(
+                    img=img,
+                    pts=[np_s_f_bar_pts],
+                    isClosed=False,
+                    color=self.red,
+                    thickness=5,
+                    lineType=cv2.LINE_AA
+                )
+                # ideal path
+                cv2.line(
+                    img=img,
+                    pt1=(median_x, min_y),
+                    pt2=(median_x, max_y),
+                    color=self.bright_green,
+                    thickness=1,
+                    lineType=cv2.LINE_AA
+                )
+                # current location
+                cv2.circle(
+                    img=img,
+                    center=self.bar_pt_list[i],
+                    radius=5,
+                    color=self.bright_red,
+                    thickness=-1,
+                    lineType=cv2.LINE_AA
+                )
+                # bar text
                 self.text(
                     img=img,
-                    text="knee was acceptable",
-                    org=(15, 85),
+                    text=f"{text} ({stddev:.2f})",
+                    org=(15, 60),
                     fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                    fontScale=0.85,
-                    color=self.light_aqua,
+                    fontScale=1,
+                    color=text_color,
                     thickness=2,
                     lineType=cv2.LINE_AA
                 )
-            # elbow text
-            if (self.failed_elbow_check):
-                self.text(
-                    img=img,
-                    text="arm was pulling",
-                    org=(15, 105),
-                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                    fontScale=0.85,
-                    color=self.light_red,
-                    thickness=2,
-                    lineType=cv2.LINE_AA
-                )
-            else:
-                self.text(
-                    img=img,
-                    text="arm was acceptable",
-                    org=(15, 105),
-                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                    fontScale=0.85,
-                    color=self.light_aqua,
-                    thickness=2,
-                    lineType=cv2.LINE_AA
-                )
-            # circle around the median foot point, makes it visually clear when and why the angle is being calculated
-            cv2.circle(
-                img=img,
-                center=(int(median_foot_point[0]), int(median_foot_point[1])),
-                radius=self.toe_radius,
-                color=self.light_red,
-                thickness=2,
-                lineType=cv2.LINE_AA
-            )
-            # only draw the angle if foot is not occluded
-            toe = self.toe_pos_list[i]
-            heel = self.heel_pos_list[i]
-            if (math.sqrt((median_foot_point[0] - toe[0]) ** 2 + (median_foot_point[1] - toe[1]) ** 2) < self.toe_radius):
-                self.annotate_angle(
-                    img, color=self.bright_red, l_or_r="l",
-                    pt1=[int(heel[0]), int(heel[1])],
-                    pt2=[int(toe[0]), int(toe[1])],
-                    pt3=[int(heel[0]), int(toe[1])],
-                    radius=self.annotation_radius,
-                    extra_offset=True
-                )
-            # heel text
-            if (failed_heel_check):
-                self.text(
-                    img=img,
-                    text="heel was lifted",
-                    org=(15, 125),
-                    color=self.light_red,
-                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                    fontScale=0.75,
-                    thickness=2,
-                    lineType=cv2.LINE_AA
-                )
-            else:
-                self.text(
-                    img=img,
-                    text="heel was acceptable",
-                    org=(15, 125),
-                    color=self.light_aqua,
-                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-                    fontScale=0.75,
-                    thickness=2,
-                    lineType=cv2.LINE_AA
-                )
-            # bar path
-            cv2.polylines(
-                img=img,
-                pts=[np_s_f_bar_pts],
-                isClosed=False,
-                color=self.red,
-                thickness=5,
-                lineType=cv2.LINE_AA
-            )
-            # ideal path
-            cv2.line(
-                img=img,
-                pt1=(median_x, min_y),
-                pt2=(median_x, max_y),
-                color=self.bright_green,
-                thickness=1,
-                lineType=cv2.LINE_AA
-            )
-            # current location
-            cv2.circle(
-                img=img,
-                center=self.bar_pt_list[i],
-                radius=5,
-                color=self.bright_red,
-                thickness=-1,
-                lineType=cv2.LINE_AA
-            )
 
             # convert to bgr for writing to video
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
@@ -808,7 +937,7 @@ class PoseAnalyzer:
         draw_y += 7
         # don't draw the arc if it will do a full loop around
         draw_arc = True
-        if (angle < 0):
+        if (angle <= 0):
             draw_arc = False
         if (draw):
             if (draw_arc):
@@ -834,6 +963,64 @@ class PoseAnalyzer:
                 lineType=cv2.LINE_AA
             )
         return angle
+
+    # draw the face bounding box, calculate the looking direction, and draw it
+    def annotate_face(self, img, img_orig):
+        # draw the face region, which is centered at the ear
+        if (self.right_ear is not None):
+            cv2.rectangle(
+                img=img,
+                pt1=(int(self.right_ear[0] - self.face_bound), int(self.right_ear[1] - self.face_bound)),
+                pt2=(int(self.right_ear[0] + self.face_bound), int(self.right_ear[1] + self.face_bound)),
+                color=self.light_red,
+                thickness=2,
+                lineType=cv2.LINE_AA
+            )
+        # crop the region to be evaluateed by the neural network
+        face_region = img_orig[
+            int(self.right_ear[1] - self.face_bound):int(self.right_ear[1] + self.face_bound),
+            int(self.right_ear[0] - self.face_bound):int(self.right_ear[0] + self.face_bound)
+        ]
+        # necessary setup
+        conv = cv2.cvtColor(face_region, cv2.COLOR_BGR2RGB)
+        tensor = self.pt_trans(conv).unsqueeze(0)
+        output = model(tensor)
+        probs = torch.softmax(output, dim=1)
+        # use softmax to predict the angle: either 0 (straight forward), 30, 60, or 90 (straight down)
+        angle = self.class_angle_dict[torch.argmax(probs).item()]
+
+        # fancy stuff to draw the arrow
+        tip_length = 15
+        tip_x = self.right_ear[0] + 100 * math.cos(math.radians(angle))
+        tip_y = self.right_ear[1] + 100 * math.sin(math.radians(angle))
+        line1_x1 = tip_x - tip_length * math.cos(math.radians(angle + 25))
+        line1_y1 = tip_y - tip_length * math.sin(math.radians(angle + 25))
+        line2_x1 = tip_x - tip_length * math.cos(math.radians(angle - 25))
+        line2_y1 = tip_y - tip_length * math.sin(math.radians(angle - 25))
+        cv2.line(
+            img=img,
+            pt1=(int(self.right_ear[0]), int(self.right_ear[1])),
+            pt2=(int(tip_x), int(tip_y)),
+            color=self.red,
+            thickness=2,
+            lineType=cv2.LINE_AA
+        )
+        cv2.line(
+            img=img,
+            pt1=(int(line1_x1), int(line1_y1)),
+            pt2=(int(tip_x), int(tip_y)),
+            color=self.red,
+            thickness=2,
+            lineType=cv2.LINE_AA
+        )
+        cv2.line(
+            img=img,
+            pt1=(int(line2_x1), int(line2_y1)),
+            pt2=(int(tip_x), int(tip_y)),
+            color=self.red,
+            thickness=2,
+            lineType=cv2.LINE_AA
+        )
 
     # custom text drawing function that allows for outline
     def text(self, img, text, org, color, fontFace, fontScale, thickness, lineType, outline_thickness=2, outline_color=(0, 0, 0)):
@@ -868,13 +1055,33 @@ class PoseAnalyzer:
 
 
 providers = ['CUDAExecutionProvider']
-session = ort.InferenceSession("./models/yolov7_weight.onnx", providers=providers)
+yolo_session = ort.InferenceSession("./models/yolov7_weight.onnx", providers=providers)
+
+model = FaceDetector()
+checkpoint = torch.load("./models/face_direction.pt")
+state_dict = model.state_dict()
+for k1, k2 in zip(state_dict.keys(), checkpoint.keys()):
+    state_dict[k1] = checkpoint[k2]
+model.load_state_dict(state_dict)
+model.eval()
+
+pt_trans = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.Normalize((0.4450, ), (0.3000, )),
+    transforms.Resize([64, 64])
+])
 
 pose_analyzer = PoseAnalyzer(
     video_folder='./videos/',
-    in_path='heellift.mp4',
+    in_path='bad.mp4',
 
-    session=session,
+    use_back_contour=True,
+    use_angles=True,
+    use_yolo=True,
+    use_face=True,
+    use_start_end=True,
+
+    yolo_session=yolo_session,
     distance_threshold=2,
     bar_window_size=2,
     bar_stddev_threshold=5,
@@ -897,5 +1104,15 @@ pose_analyzer = PoseAnalyzer(
     elbow_angle_threshold=160,
     heel_angle_threshold=10,
     toe_radius=11,
+
+    face_model=model,
+    face_bound=45,
+    pt_trans=pt_trans,
+    class_angle_dict={
+        0: 0,
+        1: 30,
+        2: 60,
+        3: 90,
+    },
 )
 pose_analyzer.fully_analyze()
