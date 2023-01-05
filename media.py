@@ -197,6 +197,7 @@ class PoseAnalyzer:
         self.face_bound = face_bound
         self.pt_trans = pt_trans
         self.class_angle_dict = class_angle_dict
+        self.face_angles = []
 
     def fully_analyze(self):
         print("initial analysis...")
@@ -690,6 +691,12 @@ class PoseAnalyzer:
                         failed_heel_check = True
                         break
 
+        if (self.use_face):
+            # two conditions for failing face check
+            avg = sum(self.face_angles) / len(self.face_angles)
+            sixty_count = len([x for x in self.face_angles if x == 60])
+            # if average angle is greater than 20 or if there are more than 3x 60 degree angles
+
         # if we want to crop the start and end of the lift
         if (self.use_start_end):
             # calculate the difference in bar position at every frame
@@ -859,6 +866,30 @@ class PoseAnalyzer:
                     lineType=cv2.LINE_AA
                 )
 
+            if (self.use_face):
+                if (avg > 20 or sixty_count > 3):
+                    self.text(
+                        img=img,
+                        text="don't look down",
+                        org=(15, 145),
+                        color=self.light_red,
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=0.75,
+                        thickness=2,
+                        lineType=cv2.LINE_AA
+                    )
+                else:
+                    self.text(
+                        img=img,
+                        text="look direction acceptable",
+                        org=(15, 145),
+                        color=self.light_aqua,
+                        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                        fontScale=0.75,
+                        thickness=2,
+                        lineType=cv2.LINE_AA
+                    )
+
             # convert to bgr for writing to video
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             self.video_output.write(img)
@@ -988,6 +1019,7 @@ class PoseAnalyzer:
         probs = torch.softmax(output, dim=1)
         # use softmax to predict the angle: either 0 (straight forward), 30, 60, or 90 (straight down)
         angle = self.class_angle_dict[torch.argmax(probs).item()]
+        self.face_angles.append(angle)
 
         # fancy stuff to draw the arrow
         tip_length = 15
@@ -1073,7 +1105,7 @@ pt_trans = transforms.Compose([
 
 pose_analyzer = PoseAnalyzer(
     video_folder='./videos/',
-    in_path='bad.mp4',
+    in_path='armbend_slowed.mp4',
 
     use_back_contour=True,
     use_angles=True,
