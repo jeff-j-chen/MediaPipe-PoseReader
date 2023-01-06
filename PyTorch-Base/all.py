@@ -192,24 +192,8 @@ for k1, k2 in zip(state_dict.keys(), checkpoint.keys()):
 model.load_state_dict(state_dict)
 model.eval()
 
-universal_transforms = transforms.Compose([
-    transforms.ToTensor(),
-    transforms.Normalize((0.4450, ), (0.3000, )),
-])
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-class_angle_dict = {
-    0: 0,
-    1: 30,
-    2: 60,
-    3: 90,
-}
 
-# for every image in ./data/
-for i in range(1, 1000):
-    image = cv2.imread(f"./data/{i:04d}.jpg")
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    tensor = universal_transforms(image).unsqueeze(0)
-    output = model(tensor)
-    probs = torch.softmax(output, dim=1)
-    angle = class_angle_dict[torch.argmax(probs).item()]
-    print(torch.argmax(probs).item())
+print(count_parameters(model))

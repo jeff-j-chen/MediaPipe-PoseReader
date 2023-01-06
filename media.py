@@ -691,19 +691,14 @@ class PoseAnalyzer:
                         failed_heel_check = True
                         break
 
-        if (self.use_face):
-            # two conditions for failing face check
-            avg = sum(self.face_angles) / len(self.face_angles)
-            sixty_count = len([x for x in self.face_angles if x == 60])
-            # if average angle is greater than 20 or if there are more than 3x 60 degree angles
-
+        start = 0
+        end = 0
         # if we want to crop the start and end of the lift
         if (self.use_start_end):
             # calculate the difference in bar position at every frame
             bar_diffs = []
             for i in range(len(self.bar_pt_list) - 1):
                 bar_diffs.append(self.bar_pt_list[i + 1][1] - self.bar_pt_list[i][1])
-            start = 0
             # start is declared when there are 3 consecutive frames of upward bar movement
             for i in range(len(bar_diffs) - 2):
                 if (bar_diffs[i] < 0 and bar_diffs[i + 1] < 0 and bar_diffs[i + 2] < 0):
@@ -712,13 +707,19 @@ class PoseAnalyzer:
             # mark the as the frame where the bar reaches its highest point
             # remember that the smaller the y is, the higher in the image it is
             highest_bar_y = min(np.array(self.bar_pt_list)[:, 1])
-            end = 0
             for i in range(len(self.bar_pt_list)):
                 if (self.bar_pt_list[i][1] <= highest_bar_y):
                     end = i
                     break
-
+        if end == 0: end = len(img_list)-1
         # only output between the start and end frames
+
+        if (self.use_face):
+            # two conditions for failing face check
+            avg = sum(self.face_angles[start:end+1]) / (end - start + 1)
+            sixty_count = len([x for x in self.face_angles if x == 60])
+            # if average angle is greater than 20 or if there are more than 3x 60 degree angles
+
         for i in tqdm(range(start, end+1)):
             img = img_list[i]
 
@@ -1105,7 +1106,7 @@ pt_trans = transforms.Compose([
 
 pose_analyzer = PoseAnalyzer(
     video_folder='./videos/',
-    in_path='armbend_slowed.mp4',
+    in_path='rdl.mp4',
 
     use_back_contour=True,
     use_angles=True,
