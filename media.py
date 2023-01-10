@@ -1106,7 +1106,7 @@ pt_trans = transforms.Compose([
 
 pose_analyzer = PoseAnalyzer(
     video_folder='./videos/',
-    in_path='rdl.mp4',
+    in_path='armbend_slowed.mp4',
 
     use_back_contour=True,
     use_angles=True,
