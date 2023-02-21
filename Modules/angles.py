@@ -41,31 +41,34 @@ def analyze_secondary(self: PoseAnalyzer) -> tuple[bool, list[float]]:
     If applicable, draws heel angle and returns whether the heel angle ever exceeded the threshold.
     '''
     failed_heel_check: bool = False
-    median_foot_point = self.toe_pos_list[len(self.toe_pos_list) // 2]
+    median_foot_point: list[float] = self.toe_pos_list[len(self.toe_pos_list) // 2]
     for i in range(len(self.heel_angle_list)):
-        angle = self.heel_angle_list[i]
-        toe = self.toe_pos_list[i]
+        angle: float = self.heel_angle_list[i]
+        toe: list[float] = self.toe_pos_list[i]
         if ((math.sqrt((median_foot_point[0] - toe[0]) ** 2 + (median_foot_point[1] - toe[1]) ** 2) < self.angle_conf.toe_radius)):
             if (angle > self.angle_conf.heel_angle_threshold):
-                failed_heel_check = True
+                failed_heel_check: bool = True
                 break
     return failed_heel_check, median_foot_point
 
 
 # circle around the median foot point, makes it visually clear when and why the angle is being calculated
 def heel_annotation(self: PoseAnalyzer, img: np.ndarray, i: int, median_foot_point: list[float]) -> None:
+    '''
+    Draw the circle around the median foot point to make it visually clear when the angle is being calculated. Calculates and annotates the angle if the foot is in position (i.e. not occluded)
+    '''
     cv2.circle(
         img=img,
         center=(int(median_foot_point[0]), int(median_foot_point[1])),
-        radius=self.toe_radius,
+        radius=self.angle_conf.toe_radius,
         color=colors.light_red,
         thickness=2,
         lineType=cv2.LINE_AA
     )
     # only draw the angle if foot is not occluded
-    toe = self.toe_pos_list[i]
-    heel = self.heel_pos_list[i]
-    if (math.sqrt((median_foot_point[0] - toe[0]) ** 2 + (median_foot_point[1] - toe[1]) ** 2) < self.toe_radius):
+    toe: list[float] = self.toe_pos_list[i]
+    heel: list[float] = self.heel_pos_list[i]
+    if (math.sqrt((median_foot_point[0] - toe[0]) ** 2 + (median_foot_point[1] - toe[1]) ** 2) < self.angle_conf.toe_radius):
         # horizontal line from heel to toe
         cv2.line(
             img=img,
@@ -81,7 +84,7 @@ def heel_annotation(self: PoseAnalyzer, img: np.ndarray, i: int, median_foot_poi
             pt1=[int(heel[0]), int(heel[1])],
             pt2=[int(toe[0]), int(toe[1])],
             pt3=[int(heel[0]), int(toe[1])],
-            radius=self.annotation_radius,
+            radius=self.angle_conf.annotation_radius,
             extra_offset=True
         )
     # heel text
@@ -108,7 +111,10 @@ def heel_annotation(self: PoseAnalyzer, img: np.ndarray, i: int, median_foot_poi
             lineType=cv2.LINE_AA
         )
 
-def elbow_annotation(self, img):
+def elbow_annotation(self: PoseAnalyzer, img: np.ndarray) -> None:
+    '''
+    Place the elbow evaluation text on the image, depending on `self.failed_elbow_check`.
+    '''
     if (self.failed_elbow_check):
         drawer.text(
             img=img,
@@ -132,7 +138,7 @@ def elbow_annotation(self, img):
             lineType=cv2.LINE_AA
         )
 
-def knee_annotation(self, img):
+def knee_annotation(self: PoseAnalyzer, img: np.ndarray) -> None:
     if (self.failed_knee_check):
         drawer.text(
             img=img,

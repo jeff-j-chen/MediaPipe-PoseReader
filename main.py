@@ -45,13 +45,13 @@ class PoseAnalyzer:
             min_detection_confidence=self.mp_conf.min_detection_confidence,
             min_tracking_confidence=self.mp_conf.min_tracking_confidence
         )
-        self.shoulder = self.elbow = self.wrist = self.hip = self.knee = self.ankle = self.heel = self.toe = self.right_ear = (0, 0)
+        self.shoulder = self.elbow = self.wrist = self.hip = self.knee = self.ankle = self.heel = self.toe = self.right_ear = [0.0, 0.0]
 
         # BACK CONTOUR
         # helper for running average
-        self.successful_eval_count = 0
+        self.successful_eval_count: int = 0
         # list of back evaluations
-        self.eval_list = []
+        self.eval_list: list[float] = []
 
         # BAR PATH
         self.yolo_session = ort.InferenceSession(
@@ -59,18 +59,18 @@ class PoseAnalyzer:
             providers=self.bar_conf.providers
         )
         # lists to store detection points
-        self.bar_pt_list = []
-        self.weight_pt_list = []
+        self.bar_pt_list: list[list[int]] = []
+        self.weight_pt_list: list[list[int]] = []
         # minimum distance between points, any closer and they are removed
-        
+
         # ANGLES
         # checks, if broken then annotate accordingly in second pass
-        self.failed_knee_check = False
-        self.failed_elbow_check = False
-        self.failed_heel_check = False
-        self.heel_angle_list = []
-        self.toe_pos_list = []
-        self.heel_pos_list = []
+        self.failed_knee_check: bool = False
+        self.failed_elbow_check: bool = False
+        self.failed_heel_check: bool = False
+        self.heel_angle_list: list[float] = []
+        self.toe_pos_list: list[list[float]] = []
+        self.heel_pos_list: list[list[float]] = []
 
         # FACE
         self.model = face.FaceDetector()
@@ -80,7 +80,7 @@ class PoseAnalyzer:
             state_dict[k1] = checkpoint[k2]
         self.model.load_state_dict(state_dict)
         self.model.eval()
-        self.face_angles = []
+        self.face_angles: list[int] = []
 
     def fully_analyze(self):
         print("initial analysis...")
@@ -92,7 +92,8 @@ class PoseAnalyzer:
             img_orig = img.copy()
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-            if (not self.read_keypoints(img)):
+            read_success: bool = self.read_keypoints(img)
+            if (not read_success):
                 continue
 
             drawer.draw_lines(self, img)

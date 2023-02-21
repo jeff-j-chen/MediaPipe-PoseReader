@@ -1,10 +1,15 @@
 import cv2
 import math
+import numpy as np
 
 import Modules.colors as colors
+from main import PoseAnalyzer
 
 # draw lines between keypoints, e.g. shoulder-elbow...
-def draw_lines(self, img):
+def draw_lines(self: PoseAnalyzer, img: np.ndarray) -> None:
+    '''
+    Draws the main skeleotn lines between each detected keypoint.
+    '''
     cv2.line(
         img=img, thickness=3, lineType=cv2.LINE_AA,
         pt1=(int(self.shoulder[0]), int(self.shoulder[1])),
@@ -61,7 +66,10 @@ def draw_lines(self, img):
     )
 
 # draw points on keypoints, e.g. nose, shoulder...
-def draw_points(self, img):
+def draw_points(self: PoseAnalyzer, img: np.ndarray) -> None:
+    '''
+    Draws each detected keypoint as a circle.
+    '''
     cv2.circle( # EAR
         img=img, thickness=-1, lineType=cv2.LINE_AA,
         center=(int(self.right_ear[0]), int(self.right_ear[1])),
@@ -110,6 +118,9 @@ def draw_points(self, img):
 
 # label an angle with the arc and the degrees, pt2 is the center point
 def annotate_angle(img, pt1, pt2, pt3, radius, color, l_or_r, draw=True, extra_offset=False):
+    '''
+    
+    '''
     # define angles
     center = pt2
     angle1 = int(math.degrees(math.atan2(pt1[1] - center[1], pt1[0] - center[0])))
