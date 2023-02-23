@@ -1,11 +1,10 @@
-import drawer
+import Modules.drawer as drawer
 import Modules.colors as colors
 import math
 import cv2
 import numpy as np
-from main import PoseAnalyzer
 
-def analyze_initial(self: PoseAnalyzer, img: np.ndarray) -> None:
+def analyze_initial(self, img: np.ndarray) -> None:
     '''
     Calculates elbow angle and heel angle and draws them. Also analyzes heel angle and adds it to lists, but does not draw analysis.
     '''
@@ -35,7 +34,7 @@ def analyze_initial(self: PoseAnalyzer, img: np.ndarray) -> None:
 
 # foot is inconsistently detected when occluded by the weight, so only calculate foot angle when not occluded
 # occlusion is determined by checking if the foot is close to its "regular" position, if occluded the position signficiantly deviates from the median
-def analyze_secondary(self: PoseAnalyzer) -> tuple[bool, list[float]]:
+def analyze_secondary(self) -> tuple[bool, list[float]]:
     '''
     Second round analysis of angles, for heel specifically.
     If applicable, draws heel angle and returns whether the heel angle ever exceeded the threshold.
@@ -53,7 +52,7 @@ def analyze_secondary(self: PoseAnalyzer) -> tuple[bool, list[float]]:
 
 
 # circle around the median foot point, makes it visually clear when and why the angle is being calculated
-def heel_annotation(self: PoseAnalyzer, img: np.ndarray, i: int, median_foot_point: list[float]) -> None:
+def heel_annotation(self, img: np.ndarray, i: int, median_foot_point: list[float]) -> None:
     '''
     Draw the circle around the median foot point to make it visually clear when the angle is being calculated. Calculates and annotates the angle if the foot is in position (i.e. not occluded)
     '''
@@ -111,7 +110,7 @@ def heel_annotation(self: PoseAnalyzer, img: np.ndarray, i: int, median_foot_poi
             lineType=cv2.LINE_AA
         )
 
-def elbow_annotation(self: PoseAnalyzer, img: np.ndarray) -> None:
+def elbow_annotation(self, img: np.ndarray) -> None:
     '''
     Place the elbow evaluation text on the image, depending on `self.failed_elbow_check`.
     '''
@@ -138,7 +137,7 @@ def elbow_annotation(self: PoseAnalyzer, img: np.ndarray) -> None:
             lineType=cv2.LINE_AA
         )
 
-def knee_annotation(self: PoseAnalyzer, img: np.ndarray) -> None:
+def knee_annotation(self, img: np.ndarray) -> None:
     if (self.failed_knee_check):
         drawer.text(
             img=img,

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from torchvision import transforms
 import Modules.colors as colors
 
@@ -60,14 +60,11 @@ class BarPathConfig:
     # yolov7 weights
     model_path: str = "./models/yolov7_weight.onnx"
     # providers (to create session)
-    providers: list = ['CUDAExecutionProvider']
+    providers: list[str] = field(default_factory=list)
     # 0: weight, 1: bar
-    cls_names: list = ["weight", "bar"]
+    cls_names: list[str] = field(default_factory=list)
     # colors for each class
-    cls_colors: dict = {
-        "weight": colors.light_red,
-        "bar": colors.red
-    }
+    cls_colors: dict[str, tuple[int, int, int]] = field(default_factory=dict)
     # minimum distance between points, any closer and they are removed
     distance_threshold: int = 2
     # window size for the smoothing for the bar path
@@ -101,12 +98,7 @@ class FaceDirectionConfig:
     # how large of a bound to draw around the face
     face_bound: int = 45
     # go from index to angle
-    class_angle_dict: dict = {
-        0: 0,
-        1: 30,
-        2: 60,
-        3: 90,
-    }
+    class_angle_dict: dict[int, int] = field(default_factory=dict)
     # necessary pre pytorch transforms
     pt_trans = transforms.Compose([
         transforms.ToTensor(),

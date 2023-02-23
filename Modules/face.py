@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
 import cv2
+import numpy as np
 import math
 
 import Modules.colors as colors
-from drawer import text
+from Modules.drawer import text
 
 class FaceDetector(nn.Module):
     def __init__(self):
@@ -65,29 +66,32 @@ class FaceDetector(nn.Module):
         return x
 
 # draw the face bounding box, calculate the looking direction, and draw it
-def analyze(self, img, img_orig):
+def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
+    '''
+    Draw the face bounding box, calculate the looking direction, and draw it.
+    '''
     # draw the face region, which is centered at the ear
     if (self.right_ear is not None):
         cv2.rectangle(
             img=img,
-            pt1=(int(self.right_ear[0] - self.face_bound), int(self.right_ear[1] - self.face_bound)),
-            pt2=(int(self.right_ear[0] + self.face_bound), int(self.right_ear[1] + self.face_bound)),
+            pt1=(int(self.right_ear[0] - self.face_conf.face_bound), int(self.right_ear[1] - self.face_conf.face_bound)),
+            pt2=(int(self.right_ear[0] + self.face_conf.face_bound), int(self.right_ear[1] + self.face_conf.face_bound)),
             color=colors.light_red,
             thickness=2,
             lineType=cv2.LINE_AA
         )
     # crop the region to be evaluateed by the neural network
     face_region = img_orig[
-        int(self.right_ear[1] - self.face_bound):int(self.right_ear[1] + self.face_bound),
-        int(self.right_ear[0] - self.face_bound):int(self.right_ear[0] + self.face_bound)
+        int(self.right_ear[1] - self.face_conf.face_bound):int(self.right_ear[1] + self.face_conf.face_bound),
+        int(self.right_ear[0] - self.face_conf.face_bound):int(self.right_ear[0] + self.face_conf.face_bound)
     ]
     # necessary setup
     conv = cv2.cvtColor(face_region, cv2.COLOR_BGR2RGB)
-    tensor = self.pt_trans(conv).unsqueeze(0)
+    tensor = self.face_conf.pt_trans(conv).unsqueeze(0) # pyright: ignore[reportGeneralTypeIssues]
     output = self.model(tensor)
     probs = torch.softmax(output, dim=1)
     # use softmax to predict the angle: either 0 (straight forward), 30, 60, or 90 (straight down)
-    angle = self.class_angle_dict[torch.argmax(probs).item()]
+    angle = self.face_conf.class_angle_dict[torch.argmax(probs).item()]
     self.face_angles.append(angle)
 
     # fancy stuff to draw the arrow
@@ -123,7 +127,10 @@ def analyze(self, img, img_orig):
         lineType=cv2.LINE_AA
     )
 
-def write_res(self, img, avg, sixty_count):
+def write_res(img: np.ndarray, avg: float, sixty_count: int):
+    '''
+    Write the result of the face analysis onto the image.
+    '''
     if (avg > 20 or sixty_count > 3):
         text(
             img=img,

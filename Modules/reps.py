@@ -1,10 +1,13 @@
 import numpy as np
 
-def det_start_end(self, img_list):
+def det_start_end(self, img_list: list[np.ndarray]) -> tuple[int, int]:
+    '''
+    Predicts the start and end of a single lift. Does not take into account the number of reps, it only captures a single one for the time being.
+    '''
     start = 0
     end = 0
     # if we want to crop the start and end of the lift
-    if (self.use_start_end):
+    if (self.analysis_conf.start_end):
         # calculate the difference in bar position at every frame
         bar_diffs = []
         for i in range(len(self.bar_pt_list) - 1):

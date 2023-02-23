@@ -1,15 +1,13 @@
 import math
 import cv2
 import numpy as np
-from main import PoseAnalyzer
-
-from drawer import text
+from Modules.drawer import text
 import Modules.colors as colors
 
 # evaluation and drawing of the back contour
-def analyze(self: PoseAnalyzer, img: np.ndarray, img_orig: np.ndarray) -> None:
+def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
     '''
-    Performs all necessary analysis for the back contour, and writes the result to the screen.    
+    Performs all necessary analysis for the back contour, and writes the result to the screen.
     '''
 
     # INITIAL HIP-SHOULDER BOUNDING BOX
@@ -189,7 +187,7 @@ def analyze(self: PoseAnalyzer, img: np.ndarray, img_orig: np.ndarray) -> None:
 
     _write_contour_text(self, img, avg)
 
-def _write_contour_text(self: PoseAnalyzer, img: np.ndarray, avg: float) -> None:
+def _write_contour_text(self, img: np.ndarray, avg: float) -> None:
     '''
     Helper function, writes the result of contour evaluation on the screen.
     '''

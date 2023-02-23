@@ -3,10 +3,9 @@ import math
 import numpy as np
 
 import Modules.colors as colors
-from main import PoseAnalyzer
 
 # draw lines between keypoints, e.g. shoulder-elbow...
-def draw_lines(self: PoseAnalyzer, img: np.ndarray) -> None:
+def draw_lines(self, img: np.ndarray) -> None:
     '''
     Draws the main skeleotn lines between each detected keypoint.
     '''
@@ -66,7 +65,7 @@ def draw_lines(self: PoseAnalyzer, img: np.ndarray) -> None:
     )
 
 # draw points on keypoints, e.g. nose, shoulder...
-def draw_points(self: PoseAnalyzer, img: np.ndarray) -> None:
+def draw_points(self, img: np.ndarray) -> None:
     '''
     Draws each detected keypoint as a circle.
     '''
@@ -117,9 +116,9 @@ def draw_points(self: PoseAnalyzer, img: np.ndarray) -> None:
     )
 
 # label an angle with the arc and the degrees, pt2 is the center point
-def annotate_angle(img, pt1, pt2, pt3, radius, color, l_or_r, draw=True, extra_offset=False):
+def annotate_angle(img: np.ndarray, pt1: list[float], pt2: list[float], pt3: list[float], radius: int, color: tuple[int, int, int], l_or_r: str, draw: bool = True, extra_offset: bool = False):
     '''
-    
+    Label an angle with the arc and the degrees. `pt2` is the center point of for the calculation.
     '''
     # define angles
     center = pt2
@@ -176,7 +175,10 @@ def annotate_angle(img, pt1, pt2, pt3, radius, color, l_or_r, draw=True, extra_o
     return angle
 
 # custom text drawing function that allows for outline
-def text(img, text, org, color, fontFace, fontScale, thickness, lineType, outline_thickness=2, outline_color=(0, 0, 0)):
+def text(img: np.ndarray, text: str, org: tuple[float, float], color: tuple[int, int, int], fontFace: int, fontScale: float, thickness: int, lineType: int, outline_thickness: int = 2, outline_color: tuple[int, int, int] = (0, 0, 0)) -> None:
+    '''
+    Draw text onto the screen, with the option of an outline. Same parameters as `cv2.putText()`.
+    '''
     if (outline_thickness > 0):
         if (thickness == 1):
             outline_thickness = 1

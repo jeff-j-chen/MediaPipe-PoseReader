@@ -21,9 +21,23 @@ class PoseAnalyzer:
         self.analysis_conf = configuration.AnalysisConfig()
         self.mp_conf = configuration.MediaPipeConfig()
         self.back_conf = configuration.BackContourConfig()
-        self.bar_conf = configuration.BarPathConfig()
+        self.bar_conf = configuration.BarPathConfig(
+            providers=["CUDAExecutionProvider"],
+            cls_names=["weight", "bar"],
+            cls_colors={
+                "weight": colors.light_red,
+                "bar": colors.red
+            }
+        )
         self.angle_conf = configuration.AngleDetConfig()
-        self.face_conf = configuration.FaceDirectionConfig()
+        self.face_conf = configuration.FaceDirectionConfig(
+            class_angle_dict={
+                0: 0,
+                1: 30,
+                2: 60,
+                3: 90,
+            }
+        )
 
         self.cap = cv2.VideoCapture(video_folder + in_path)
         self.h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -37,7 +51,7 @@ class PoseAnalyzer:
         self.video_length = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
         # POSE DETECTION
-        self.mp_pose = mp.solutions.pose
+        self.mp_pose = mp.solutions.pose # pyright: ignore[reportGeneralTypeIssues]
         self.pose = self.mp_pose.Pose(
             static_image_mode=self.mp_conf.static_image_mode,
             model_complexity=self.mp_conf.model_complexity,
@@ -121,7 +135,7 @@ class PoseAnalyzer:
     def second_pass(self, img_list):
 
         if (self.analysis_conf.bar_path):
-            np_s_f_bar_pts, median_x, min_y, max_y, stddev, text, text_color = bar.analyze_secondary(self)
+            np_s_f_bar_pts, median_x, min_y, max_y, stddev, text, text_color = bar.analyze_secondary(self) # pyright: ignore[reportGeneralTypeIssues]
 
         if (self.analysis_conf.angles):
             self.failed_heel_check, median_foot_point = angles.analyze_secondary(self)
@@ -139,13 +153,13 @@ class PoseAnalyzer:
             if (self.analysis_conf.angles):
                 angles.knee_annotation(self, img)
                 angles.elbow_annotation(self, img)
-                angles.heel_annotation(self, img, i, median_foot_point)
+                angles.heel_annotation(self, img, i, median_foot_point) # pyright: ignore[reportUnboundVariable]
 
             if (self.analysis_conf.bar_path and len(self.bar_pt_list) > 0):
-                bar.draw_bar_path(self, img, i, np_s_f_bar_pts, median_x, min_y, max_y, stddev, text, text_color)
+                bar.draw_bar_path(self, img, i, np_s_f_bar_pts, median_x, min_y, max_y, stddev, text, text_color) # pyright: ignore[reportUnboundVariable]
 
             if (self.analysis_conf.face):
-                face.write_res(self, img, avg, sixty_count)
+                face.write_res(img, avg, sixty_count) # pyright: ignore[reportUnboundVariable]
 
             # convert to bgr for writing to video
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
@@ -172,7 +186,9 @@ class PoseAnalyzer:
         self.right_ear = [lm.landmark[lm_pose.RIGHT_EAR].x       * self.w, lm.landmark[lm_pose.RIGHT_EAR].y        * self.h]
         return True
 
-if __name__ == '__main__':
+
+if (__name__ == '__main__'):
+    # use -V or --video to specify name of video file to analyze
     parser = argparse.ArgumentParser()
     parser.add_argument('-V', '--video', dest='video_file', type=str, help='Path to the video file')
     args = parser.parse_args()
@@ -181,6 +197,7 @@ if __name__ == '__main__':
     pose_analyzer = PoseAnalyzer(
         video_folder='./videos/',
         in_path=video_file_path,
+        # all other configurations are set to default within __init__
     )
 
     pose_analyzer.fully_analyze()

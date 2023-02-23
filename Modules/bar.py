@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 
 import Modules.colors as colors
-from drawer import annotate_angle
+import Modules.drawer as drawer
 from main import PoseAnalyzer
 
 # pre-processing for yolo, from their github
@@ -29,7 +29,7 @@ def _preprocess(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scal
     return im, r, (dw, dh)
 
 # drawing the detected bounding boxes every frame, and the line to the knee/him
-def analyze_initial(self: PoseAnalyzer, img: np.ndarray, img_orig: np.ndarray) -> None:
+def analyze_initial(self, img: np.ndarray, img_orig: np.ndarray) -> None:
     '''
     Round one analysis, annotating the bounding box and determing angles/points.
     '''
@@ -90,7 +90,7 @@ def analyze_initial(self: PoseAnalyzer, img: np.ndarray, img_orig: np.ndarray) -
                 lineType=cv2.LINE_AA
             )
 
-            knee_angle: float = annotate_angle(
+            knee_angle: float = drawer.annotate_angle(
                 img, color=colors.blue, l_or_r="l",
                 pt1=[int(self.hip[0]), int(self.hip[1])],
                 pt2=[int(self.knee[0]), int(self.knee[1])],
@@ -105,11 +105,11 @@ def analyze_initial(self: PoseAnalyzer, img: np.ndarray, img_orig: np.ndarray) -
     if (weight_count == 0):
         self.weight_pt_list.append([600, 600])
 
-def analyze_secondary(self: PoseAnalyzer) -> None | tuple[np.ndarray, float, float, float, np.floating, str, tuple[int, int, int]]:
+def analyze_secondary(self) -> None | tuple[np.ndarray, float, float, float, np.floating, str, tuple[int, int, int]]:
     # process the points so that the bar path is good
     filtered_bar_pts = _remove_close_points(self.bar_pt_list, self.bar_conf.distance_threshold)
     if (len(filtered_bar_pts) <= 0):
-        return
+        return None
 
     filtered2_bar_pts: list[list[int]] = _remove_outliers(filtered_bar_pts, 50)
     s_f_bar_pts: list[tuple[float, int]] = _smooth_horizontally(filtered2_bar_pts, self.bar_conf.bar_window_size)
@@ -127,7 +127,7 @@ def analyze_secondary(self: PoseAnalyzer) -> None | tuple[np.ndarray, float, flo
 
     return np_s_f_bar_pts, median_x, min_y, max_y, stddev, text, text_color
 
-def draw_bar_path(self, img, i, np_s_f_bar_pts, median_x, min_y, max_y, stddev, text, text_color):
+def draw_bar_path(self: PoseAnalyzer, img: np.ndarray, i: int, np_s_f_bar_pts: np.ndarray, median_x: float, min_y: float, max_y: float, stddev: float, text_in: str, text_color: tuple[int, int, int]) -> None:
     # bar path
     cv2.polylines(
         img=img,
@@ -142,7 +142,7 @@ def draw_bar_path(self, img, i, np_s_f_bar_pts, median_x, min_y, max_y, stddev, 
         img=img,
         pt1=(median_x, min_y),
         pt2=(median_x, max_y),
-        color=self.bright_green,
+        color=colors.bright_green,
         thickness=1,
         lineType=cv2.LINE_AA
     )
@@ -156,9 +156,9 @@ def draw_bar_path(self, img, i, np_s_f_bar_pts, median_x, min_y, max_y, stddev, 
         lineType=cv2.LINE_AA
     )
     # bar text
-    text(
+    drawer.text(
         img=img,
-        text=f"{text} ({stddev:.2f})",
+        text=f"{text_in} ({stddev:.2f})",
         org=(15, 60),
         fontFace=cv2.FONT_HERSHEY_SIMPLEX,
         fontScale=1,
