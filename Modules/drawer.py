@@ -5,118 +5,118 @@ import numpy as np
 import Modules.colors as colors
 
 # draw lines between keypoints, e.g. shoulder-elbow...
-def draw_lines(self, img: np.ndarray) -> None:
+def draw_lines(self) -> None:
     '''
     Draws the main skeleotn lines between each detected keypoint.
     '''
     cv2.line(
-        img=img, thickness=3, lineType=cv2.LINE_AA,
+        img=self.img, thickness=3, lineType=cv2.LINE_AA,
         pt1=(int(self.shoulder[0]), int(self.shoulder[1])),
         pt2=(int(self.right_ear[0]), int(self.right_ear[1])),
         color=colors.light_aqua,
     )
     cv2.line( # SHOULDER - HIP
-        img=img, thickness=3, lineType=cv2.LINE_AA,
+        img=self.img, thickness=3, lineType=cv2.LINE_AA,
         pt1=(int(self.shoulder[0]), int(self.shoulder[1])),
         pt2=(int(self.hip[0]), int(self.hip[1])),
         color=colors.light_aqua,
     )
     cv2.line( # HIP - KNEE
-        img=img, thickness=3, lineType=cv2.LINE_AA,
+        img=self.img, thickness=3, lineType=cv2.LINE_AA,
         pt1=(int(self.hip[0]), int(self.hip[1])),
         pt2=(int(self.knee[0]), int(self.knee[1])),
         color=colors.light_blue,
     )
     cv2.line( # KNEE - ANKLE
-        img=img, thickness=3, lineType=cv2.LINE_AA,
+        img=self.img, thickness=3, lineType=cv2.LINE_AA,
         pt1=(int(self.knee[0]), int(self.knee[1])),
         pt2=(int(self.ankle[0]), int(self.ankle[1])),
         color=colors.light_blue,
     )
     cv2.line( # ANKLE - HEEL
-        img=img, thickness=3, lineType=cv2.LINE_AA,
+        img=self.img, thickness=3, lineType=cv2.LINE_AA,
         pt1=(int(self.ankle[0]), int(self.ankle[1])),
         pt2=(int(self.heel[0]), int(self.heel[1])),
         color=colors.light_purple,
     )
     cv2.line( # ANKLE - TOE
-        img=img, thickness=3, lineType=cv2.LINE_AA,
+        img=self.img, thickness=3, lineType=cv2.LINE_AA,
         pt1=(int(self.ankle[0]), int(self.ankle[1])),
         pt2=(int(self.toe[0]), int(self.toe[1])),
         color=colors.light_purple,
     )
     cv2.line( # HEEL - TOE
-        img=img, thickness=3, lineType=cv2.LINE_AA,
+        img=self.img, thickness=3, lineType=cv2.LINE_AA,
         pt1=(int(self.heel[0]), int(self.heel[1])),
         pt2=(int(self.toe[0]), int(self.toe[1])),
         color=colors.light_purple,
     )
     cv2.line( # SHOULDER - ELBOW
-        img=img, thickness=3, lineType=cv2.LINE_AA,
+        img=self.img, thickness=3, lineType=cv2.LINE_AA,
         pt1=(int(self.shoulder[0]), int(self.shoulder[1])),
         pt2=(int(self.elbow[0]), int(self.elbow[1])),
         color=colors.light_green,
     )
     cv2.line( # ELBOW - WRIST
-        img=img, thickness=3, lineType=cv2.LINE_AA,
+        img=self.img, thickness=3, lineType=cv2.LINE_AA,
         pt1=(int(self.elbow[0]), int(self.elbow[1])),
         pt2=(int(self.wrist[0]), int(self.wrist[1])),
         color=colors.light_green,
     )
 
 # draw points on keypoints, e.g. nose, shoulder...
-def draw_points(self, img: np.ndarray) -> None:
+def draw_points(self) -> None:
     '''
     Draws each detected keypoint as a circle.
     '''
     cv2.circle( # EAR
-        img=img, thickness=-1, lineType=cv2.LINE_AA,
+        img=self.img, thickness=-1, lineType=cv2.LINE_AA,
         center=(int(self.right_ear[0]), int(self.right_ear[1])),
         radius=5, color=colors.aqua,
     )
     cv2.circle( # SHOULDER
-        img=img, thickness=-1, lineType=cv2.LINE_AA,
+        img=self.img, thickness=-1, lineType=cv2.LINE_AA,
         center=(int(self.shoulder[0]), int(self.shoulder[1])),
         radius=5, color=colors.aqua,
     )
     cv2.circle( # HIP
-        img=img, thickness=-1, lineType=cv2.LINE_AA,
+        img=self.img, thickness=-1, lineType=cv2.LINE_AA,
         center=(int(self.hip[0]), int(self.hip[1])),
         radius=5, color=colors.blue,
     )
     cv2.circle( # KNEE
-        img=img, thickness=-1, lineType=cv2.LINE_AA,
+        img=self.img, thickness=-1, lineType=cv2.LINE_AA,
         center=(int(self.knee[0]), int(self.knee[1])),
         radius=5, color=colors.blue,
     )
     cv2.circle( # ANKLE
-        img=img, thickness=-1, lineType=cv2.LINE_AA,
+        img=self.img, thickness=-1, lineType=cv2.LINE_AA,
         center=(int(self.ankle[0]), int(self.ankle[1])),
         radius=5, color=colors.purple,
     )
     cv2.circle( # HEEL
-        img=img, thickness=-1, lineType=cv2.LINE_AA,
+        img=self.img, thickness=-1, lineType=cv2.LINE_AA,
         center=(int(self.heel[0]), int(self.heel[1])),
         radius=5, color=colors.purple,
     )
     cv2.circle( # TOE
-        img=img, thickness=-1, lineType=cv2.LINE_AA,
+        img=self.img, thickness=-1, lineType=cv2.LINE_AA,
         center=(int(self.toe[0]), int(self.toe[1])),
         radius=5, color=colors.purple,
     )
     cv2.circle( # ELBOW
-        img=img, thickness=-1, lineType=cv2.LINE_AA,
+        img=self.img, thickness=-1, lineType=cv2.LINE_AA,
         center=(int(self.elbow[0]), int(self.elbow[1])),
         radius=5, color=colors.green,
     )
     cv2.circle( # WRIST
-        img=img, thickness=-1, lineType=cv2.LINE_AA,
+        img=self.img, thickness=-1, lineType=cv2.LINE_AA,
         center=(int(self.wrist[0]), int(self.wrist[1])),
         radius=5, color=colors.green,
     )
 
 # label an angle with the arc and the degrees, pt2 is the center point
-def annotate_angle(img: np.ndarray, pt1: list[float], pt2: list[float], pt3: list[float], radius: int, color: tuple[int, int, int], l_or_r: str, draw: bool = True, extra_offset: bool = False):
+def annotate_angle(self, pt1: list[float], pt2: list[float], pt3: list[float], radius: int, color: tuple[int, int, int], l_or_r: str, draw: bool = True, extra_offset: bool = False):
     '''
     Label an angle with the arc and the degrees. `pt2` is the center point of for the calculation.
     '''
@@ -152,7 +152,7 @@ def annotate_angle(img: np.ndarray, pt1: list[float], pt2: list[float], pt3: lis
     if (draw):
         if (draw_arc):
             cv2.ellipse(
-                img=img,
+                img=self.img,
                 center=center,
                 axes=(radius, radius),
                 angle=0,
@@ -163,7 +163,7 @@ def annotate_angle(img: np.ndarray, pt1: list[float], pt2: list[float], pt3: lis
                 lineType=cv2.LINE_AA
             )
         text(
-            img=img,
+            self,
             text=f"{round(angle)}",
             org=(draw_x, draw_y),
             fontFace=cv2.FONT_HERSHEY_SIMPLEX,
@@ -175,7 +175,7 @@ def annotate_angle(img: np.ndarray, pt1: list[float], pt2: list[float], pt3: lis
     return angle
 
 # custom text drawing function that allows for outline
-def text(img: np.ndarray, text: str, org: tuple[float, float], color: tuple[int, int, int], fontFace: int, fontScale: float, thickness: int, lineType: int, outline_thickness: int = 2, outline_color: tuple[int, int, int] = (0, 0, 0)) -> None:
+def text(self, text: str, org: tuple[float, float], color: tuple[int, int, int], fontFace: int, fontScale: float, thickness: int, lineType: int, outline_thickness: int = 2, outline_color: tuple[int, int, int] = (0, 0, 0)) -> None:
     '''
     Draw text onto the screen, with the option of an outline. Same parameters as `cv2.putText()`.
     '''
@@ -183,7 +183,7 @@ def text(img: np.ndarray, text: str, org: tuple[float, float], color: tuple[int,
         if (thickness == 1):
             outline_thickness = 1
         cv2.putText(
-            img=img,
+            img=self.img,
             text=text,
             org=org,
             fontFace=fontFace,
@@ -193,7 +193,7 @@ def text(img: np.ndarray, text: str, org: tuple[float, float], color: tuple[int,
             lineType=lineType
         )
     cv2.putText(
-        img=img,
+        img=self.img,
         text=text,
         org=org,
         fontFace=fontFace,

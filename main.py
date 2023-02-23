@@ -1,6 +1,7 @@
 import cv2
+import numpy as np
 import math
-from tqdm import tqdm
+from tqdm import trange
 import mediapipe as mp
 import argparse
 
@@ -39,6 +40,7 @@ class PoseAnalyzer:
             }
         )
 
+        # VIDEO AND IMAGES
         self.cap = cv2.VideoCapture(video_folder + in_path)
         self.h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         self.w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -49,6 +51,8 @@ class PoseAnalyzer:
             frameSize=(self.w, self.h)
         )
         self.video_length = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.img: np.ndarray = np.zeros((self.h, self.w, 3), dtype=np.uint8)
+        self.img_orig: np.ndarray = np.zeros((self.h, self.w), dtype=np.uint8)
 
         # POSE DETECTION
         self.mp_pose = mp.solutions.pose # pyright: ignore[reportGeneralTypeIssues]
@@ -60,6 +64,7 @@ class PoseAnalyzer:
             min_tracking_confidence=self.mp_conf.min_tracking_confidence
         )
         self.shoulder = self.elbow = self.wrist = self.hip = self.knee = self.ankle = self.heel = self.toe = self.right_ear = [0.0, 0.0]
+        self.segmentation_mask: np.ndarray = np.zeros((self.h, self.w), dtype=np.uint8)
 
         # BACK CONTOUR
         # helper for running average
@@ -96,44 +101,49 @@ class PoseAnalyzer:
         self.model.eval()
         self.face_angles: list[int] = []
 
-    def fully_analyze(self):
+    def fully_analyze(self) -> None:
+        '''
+        First round analysis, determining the back contour, agnles, bar path, and face direction.
+        '''
         print("initial analysis...")
         img_list = []
-        for i in tqdm(range(self.video_length)):
+        for i in trange(self.video_length):
             # IMPORT
             # read frame and convert to RGB
-            ret, img = self.cap.read()
-            img_orig = img.copy()
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            ret, self.img = self.cap.read()
+            self.img_orig = self.img.copy()
+            self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
 
-            read_success: bool = self.read_keypoints(img)
+            read_success: bool = self.read_mediapipe(self.img)
             if (not read_success):
                 continue
 
-            drawer.draw_lines(self, img)
-            drawer.draw_points(self, img)
+            drawer.draw_lines(self)
+            drawer.draw_points(self)
 
             if (self.analysis_conf.back_contour):
-                back_contour.analyze(self, img, img_orig)
+                back_contour.analyze(self)
 
             if (self.analysis_conf.angles):
-                angles.analyze_initial(self, img)
+                angles.analyze_initial(self)
 
             if (self.analysis_conf.bar_path):
-                bar.analyze_initial(self, img, img_orig)
+                bar.analyze_initial(self)
 
             if (self.analysis_conf.face):
-                face.analyze(self, img, img_orig)
+                face.analyze(self)
 
-            drawer.text(img=img, text=f"Frame: {i}", org=(40, self.h - 5), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=colors.white, thickness=1, lineType=cv2.LINE_AA)
-            img_list.append(img)
+            drawer.text(self, text=f"Frame: {i}", org=(40, self.h - 5), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=colors.white, thickness=1, lineType=cv2.LINE_AA)
+            img_list.append(self.img)
 
         print("refining...")
         self.second_pass(img_list)
 
     # yolo, remove overlapping points, draw paths, calculate straightness, annotate second round stuff, write to screen
-    def second_pass(self, img_list):
-
+    def second_pass(self, img_list: list[np.ndarray]) -> None:
+        '''
+        Second round analysis, refining the bar path, determining heel angle, and averaging out looking direction.
+        '''
         if (self.analysis_conf.bar_path):
             np_s_f_bar_pts, median_x, min_y, max_y, stddev, text, text_color = bar.analyze_secondary(self) # pyright: ignore[reportGeneralTypeIssues]
 
@@ -147,19 +157,19 @@ class PoseAnalyzer:
             sixty_count = len([x for x in self.face_angles if x == 60])
             # if average angle is greater than 20 or if there are more than 3x 60 degree angles, fail later
 
-        for i in tqdm(range(start, end+1)):
+        for i in trange(start, end+1):
             img = img_list[i]
 
             if (self.analysis_conf.angles):
-                angles.knee_annotation(self, img)
-                angles.elbow_annotation(self, img)
-                angles.heel_annotation(self, img, i, median_foot_point) # pyright: ignore[reportUnboundVariable]
+                angles.knee_annotation(self)
+                angles.elbow_annotation(self)
+                angles.heel_annotation(self, i, median_foot_point) # pyright: ignore[reportUnboundVariable]
 
             if (self.analysis_conf.bar_path and len(self.bar_pt_list) > 0):
-                bar.draw_bar_path(self, img, i, np_s_f_bar_pts, median_x, min_y, max_y, stddev, text, text_color) # pyright: ignore[reportUnboundVariable]
+                bar.draw_bar_path(self, i, np_s_f_bar_pts, median_x, min_y, max_y, float(stddev), text, text_color) # pyright: ignore[reportUnboundVariable]
 
             if (self.analysis_conf.face):
-                face.write_res(img, avg, sixty_count) # pyright: ignore[reportUnboundVariable]
+                face.write_res(self, avg, sixty_count) # pyright: ignore[reportUnboundVariable]
 
             # convert to bgr for writing to video
             img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
@@ -169,9 +179,13 @@ class PoseAnalyzer:
         self.video_output.release()
 
     # define keypoints from mediapose with variable names
-    def read_keypoints(self, img):
-        keypoints = self.pose.process(img)
-        lm = keypoints.pose_landmarks
+    def read_mediapipe(self, img: np.ndarray) -> bool:
+        '''
+        Reads the keypoints and segmentation mask from mediapipe and stores them in the class.
+        Returns `False` if no keypoints are found.
+        '''
+        results = self.pose.process(img)
+        lm = results.pose_landmarks
         if (lm is None):
             return False
         lm_pose = self.mp_pose.PoseLandmark
@@ -184,6 +198,13 @@ class PoseAnalyzer:
         self.heel     = [lm.landmark[lm_pose.RIGHT_HEEL].x       * self.w, lm.landmark[lm_pose.RIGHT_HEEL].y       * self.h]
         self.toe      = [lm.landmark[lm_pose.RIGHT_FOOT_INDEX].x * self.w, lm.landmark[lm_pose.RIGHT_FOOT_INDEX].y * self.h]
         self.right_ear = [lm.landmark[lm_pose.RIGHT_EAR].x       * self.w, lm.landmark[lm_pose.RIGHT_EAR].y        * self.h]
+
+        self.segmentation_mask = results.segmentation_mask
+        # write the segmentation mask over the original image
+        condition = np.stack((results.segmentation_mask,) * 3, axis=-1) > 0.1
+        bg_image = np.zeros(img.shape, dtype=np.uint8)
+        bg_image[:] = colors.black
+        self.img = np.where(condition, img, bg_image)
         return True
 
 

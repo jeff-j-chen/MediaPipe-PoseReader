@@ -5,7 +5,7 @@ from Modules.drawer import text
 import Modules.colors as colors
 
 # evaluation and drawing of the back contour
-def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
+def analyze(self) -> None:
     '''
     Performs all necessary analysis for the back contour, and writes the result to the screen.
     '''
@@ -13,14 +13,14 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
     # INITIAL HIP-SHOULDER BOUNDING BOX
     # draw a rectangle around the point from the hip to shoulder
     cv2.rectangle(
-        img=img, thickness=1, lineType=cv2.LINE_AA,
+        img=self.img, thickness=1, lineType=cv2.LINE_AA,
         pt1=(int(self.hip[0]), int(self.hip[1])),
         pt2=(int(self.shoulder[0]), int(self.shoulder[1])),
         color=colors.light_orange,
     )
     # continue only if the horizontal distance of the extension is > self.contour_bbox_min
     if abs(self.shoulder[0] - self.hip[0]) < self.back_conf.contour_bbox_min:
-        _write_contour_text(self, img, -999)
+        _write_contour_text(self, -999)
         return
 
     # LARGE BOUNDING BOX THRESHOLDING (TO DETERMINE BACK INTERSECTION)
@@ -29,7 +29,7 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
     ext_bbox_top_right: tuple[int, int] = ( int(self.shoulder[0]), 0 )
 
     # threshold the extended bounding box, red for contrast, blurred to smooth
-    image_b, image_g, image_r = cv2.split(img_orig)
+    image_b, image_g, image_r = cv2.split(self.img_orig)
     region: np.ndarray = image_g[
         np.clip(ext_bbox_top_right[1], 0, 600):abs(ext_bbox_bottom_left[1]), # y1:y2
         np.clip(ext_bbox_bottom_left[0], 0, 600):abs(ext_bbox_top_right[0]) # x1:x2
@@ -65,7 +65,7 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
     # annotate det_points
     for d in det_points:
         cv2.circle(
-            img=img,
+            img=self.img,
             center=(int(d[0]), int(d[1])),
             radius=5,
             color=colors.light_red,
@@ -98,7 +98,7 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
     # -3/4 slope to the right side of the box seems to work reasonably well
     chosen_y_pos: int = int(self.hip[1]) - int(self.hip[0] * 0.75)
     cv2.line(
-        img=img, thickness=1, lineType=cv2.LINE_AA,
+        img=self.img, thickness=1, lineType=cv2.LINE_AA,
         pt1=(int(self.hip[0]), int(self.hip[1])),
         pt2=(
             ext_bbox_bottom_left[0],
@@ -118,7 +118,7 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
 
     # DRAWING AND FILTERING LARGE CONTOUR
     # for point in contour:
-    #     cv2.circle(img=img, center=(point[0][0], point[0][1]), radius=1, color=colors.black, thickness=-1)
+    #     cv2.circle(img=self.img, center=(point[0][0], point[0][1]), radius=1, color=colors.black, thickness=-1)
     # first pass removes all points left of the intersection and right of the shoulder
     pass_1: list[np.ndarray] = []
     rightmost_point: np.ndarray = np.array([0, 0])
@@ -154,7 +154,7 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
         np.array([top_right_intersection[0], bottom_left_intersection[1]])
     )
     lumbar_spine_contour = np.array(lumbar_spine_contour)
-    cv2.fillPoly(img, [lumbar_spine_contour], colors.light_red)
+    cv2.fillPoly(self.img, [lumbar_spine_contour], colors.light_red)
 
     # overlay the 'ideal' triangle on their back with green, only the red peeks through
     triangle_pts = [
@@ -163,7 +163,7 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
         [top_right_intersection[0], bottom_left_intersection[1]],
     ]
     triangle_pts = np.array(triangle_pts)
-    cv2.fillPoly(img=img, pts=[triangle_pts], color=colors.light_aqua)
+    cv2.fillPoly(img=self.img, pts=[triangle_pts], color=colors.light_aqua)
 
 
     # COMPARISON WITH 'IDEAL' STRAIGHT BACK
@@ -185,9 +185,9 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
     # print(f"coeff: {coeff}, avg: {avg}")
 ###################################################################################################
 
-    _write_contour_text(self, img, avg)
+    _write_contour_text(self, avg)
 
-def _write_contour_text(self, img: np.ndarray, avg: float) -> None:
+def _write_contour_text(self, avg: float) -> None:
     '''
     Helper function, writes the result of contour evaluation on the screen.
     '''
@@ -201,7 +201,7 @@ def _write_contour_text(self, img: np.ndarray, avg: float) -> None:
             cur_eval = "rounded"
             cur_color = colors.light_red
     text(
-        img=img, text=f"back {cur_eval} ({avg:.2f})",
+        self, text=f"back {cur_eval} ({avg:.2f})",
         org=(15, 30), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=cur_color, thickness=2,
         lineType=cv2.LINE_AA
     )

@@ -4,12 +4,12 @@ import math
 import cv2
 import numpy as np
 
-def analyze_initial(self, img: np.ndarray) -> None:
+def analyze_initial(self) -> None:
     '''
     Calculates elbow angle and heel angle and draws them. Also analyzes heel angle and adds it to lists, but does not draw analysis.
     '''
     elbow_angle = drawer.annotate_angle(
-        img, color=colors.green, l_or_r="r",
+        self, color=colors.green, l_or_r="r",
         pt1=[int(self.shoulder[0]), int(self.shoulder[1])],
         pt2=[int(self.elbow[0]), int(self.elbow[1])],
         pt3=[int(self.wrist[0]), int(self.wrist[1])],
@@ -21,7 +21,7 @@ def analyze_initial(self, img: np.ndarray) -> None:
     # toe angle is drawn in 2nd pass because we first need to evaluate if the foot is occluded by the weight or not
     # calculate and append to lists here
     heel_angle = drawer.annotate_angle(
-        img, color=colors.light_purple, l_or_r="l",
+        self, color=colors.light_purple, l_or_r="l",
         pt1=[int(self.heel[0]), int(self.heel[1])],
         pt2=[int(self.toe[0]), int(self.toe[1])],
         pt3=[int(self.heel[0]), int(self.toe[1])],
@@ -52,12 +52,12 @@ def analyze_secondary(self) -> tuple[bool, list[float]]:
 
 
 # circle around the median foot point, makes it visually clear when and why the angle is being calculated
-def heel_annotation(self, img: np.ndarray, i: int, median_foot_point: list[float]) -> None:
+def heel_annotation(self, i: int, median_foot_point: list[float]) -> None:
     '''
     Draw the circle around the median foot point to make it visually clear when the angle is being calculated. Calculates and annotates the angle if the foot is in position (i.e. not occluded)
     '''
     cv2.circle(
-        img=img,
+        img=self.img,
         center=(int(median_foot_point[0]), int(median_foot_point[1])),
         radius=self.angle_conf.toe_radius,
         color=colors.light_red,
@@ -70,7 +70,7 @@ def heel_annotation(self, img: np.ndarray, i: int, median_foot_point: list[float
     if (math.sqrt((median_foot_point[0] - toe[0]) ** 2 + (median_foot_point[1] - toe[1]) ** 2) < self.angle_conf.toe_radius):
         # horizontal line from heel to toe
         cv2.line(
-            img=img,
+            img=self.img,
             pt1=(int(toe[0]), int(toe[1])),
             pt2=(int(heel[0]), int(toe[1])),
             color=colors.red,
@@ -79,7 +79,7 @@ def heel_annotation(self, img: np.ndarray, i: int, median_foot_point: list[float
         )
         # angle annotation
         drawer.annotate_angle(
-            img, color=colors.bright_red, l_or_r="l",
+            self, color=colors.bright_red, l_or_r="l",
             pt1=[int(heel[0]), int(heel[1])],
             pt2=[int(toe[0]), int(toe[1])],
             pt3=[int(heel[0]), int(toe[1])],
@@ -89,7 +89,7 @@ def heel_annotation(self, img: np.ndarray, i: int, median_foot_point: list[float
     # heel text
     if (self.failed_heel_check):
         drawer.text(
-            img=img,
+            self,
             text="heel was lifted",
             org=(15, 125),
             color=colors.light_red,
@@ -100,7 +100,7 @@ def heel_annotation(self, img: np.ndarray, i: int, median_foot_point: list[float
         )
     else:
         drawer.text(
-            img=img,
+            self,
             text="heel was acceptable",
             org=(15, 125),
             color=colors.light_aqua,
@@ -110,13 +110,13 @@ def heel_annotation(self, img: np.ndarray, i: int, median_foot_point: list[float
             lineType=cv2.LINE_AA
         )
 
-def elbow_annotation(self, img: np.ndarray) -> None:
+def elbow_annotation(self) -> None:
     '''
     Place the elbow evaluation text on the image, depending on `self.failed_elbow_check`.
     '''
     if (self.failed_elbow_check):
         drawer.text(
-            img=img,
+            self,
             text="arm was pulling",
             org=(15, 105),
             fontFace=cv2.FONT_HERSHEY_SIMPLEX,
@@ -127,7 +127,7 @@ def elbow_annotation(self, img: np.ndarray) -> None:
         )
     else:
         drawer.text(
-            img=img,
+            self,
             text="arm was acceptable",
             org=(15, 105),
             fontFace=cv2.FONT_HERSHEY_SIMPLEX,
@@ -137,10 +137,10 @@ def elbow_annotation(self, img: np.ndarray) -> None:
             lineType=cv2.LINE_AA
         )
 
-def knee_annotation(self, img: np.ndarray) -> None:
+def knee_annotation(self) -> None:
     if (self.failed_knee_check):
         drawer.text(
-            img=img,
+            self,
             text="knee was straightened too early",
             org=(15, 85),
             fontFace=cv2.FONT_HERSHEY_SIMPLEX,
@@ -151,7 +151,7 @@ def knee_annotation(self, img: np.ndarray) -> None:
         )
     else:
         drawer.text(
-            img=img,
+            self,
             text="knee was acceptable",
             org=(15, 85),
             fontFace=cv2.FONT_HERSHEY_SIMPLEX,

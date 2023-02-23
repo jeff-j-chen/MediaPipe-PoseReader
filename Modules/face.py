@@ -66,14 +66,14 @@ class FaceDetector(nn.Module):
         return x
 
 # draw the face bounding box, calculate the looking direction, and draw it
-def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
+def analyze(self) -> None:
     '''
     Draw the face bounding box, calculate the looking direction, and draw it.
     '''
     # draw the face region, which is centered at the ear
     if (self.right_ear is not None):
         cv2.rectangle(
-            img=img,
+            img=self.img,
             pt1=(int(self.right_ear[0] - self.face_conf.face_bound), int(self.right_ear[1] - self.face_conf.face_bound)),
             pt2=(int(self.right_ear[0] + self.face_conf.face_bound), int(self.right_ear[1] + self.face_conf.face_bound)),
             color=colors.light_red,
@@ -81,7 +81,7 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
             lineType=cv2.LINE_AA
         )
     # crop the region to be evaluateed by the neural network
-    face_region = img_orig[
+    face_region = self.img_orig[
         int(self.right_ear[1] - self.face_conf.face_bound):int(self.right_ear[1] + self.face_conf.face_bound),
         int(self.right_ear[0] - self.face_conf.face_bound):int(self.right_ear[0] + self.face_conf.face_bound)
     ]
@@ -103,7 +103,7 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
     line2_x1 = tip_x - tip_length * math.cos(math.radians(angle - 25))
     line2_y1 = tip_y - tip_length * math.sin(math.radians(angle - 25))
     cv2.line(
-        img=img,
+        img=self.img,
         pt1=(int(self.right_ear[0]), int(self.right_ear[1])),
         pt2=(int(tip_x), int(tip_y)),
         color=colors.red,
@@ -111,7 +111,7 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
         lineType=cv2.LINE_AA
     )
     cv2.line(
-        img=img,
+        img=self.img,
         pt1=(int(line1_x1), int(line1_y1)),
         pt2=(int(tip_x), int(tip_y)),
         color=colors.red,
@@ -119,7 +119,7 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
         lineType=cv2.LINE_AA
     )
     cv2.line(
-        img=img,
+        img=self.img,
         pt1=(int(line2_x1), int(line2_y1)),
         pt2=(int(tip_x), int(tip_y)),
         color=colors.red,
@@ -127,13 +127,13 @@ def analyze(self, img: np.ndarray, img_orig: np.ndarray) -> None:
         lineType=cv2.LINE_AA
     )
 
-def write_res(img: np.ndarray, avg: float, sixty_count: int):
+def write_res(self, avg: float, sixty_count: int):
     '''
     Write the result of the face analysis onto the image.
     '''
     if (avg > 20 or sixty_count > 3):
         text(
-            img=img,
+            self,
             text="don't look down",
             org=(15, 145),
             color=colors.light_red,
@@ -144,7 +144,7 @@ def write_res(img: np.ndarray, avg: float, sixty_count: int):
         )
     else:
         text(
-            img=img,
+            self,
             text="look direction acceptable",
             org=(15, 145),
             color=colors.light_aqua,

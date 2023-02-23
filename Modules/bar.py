@@ -29,12 +29,12 @@ def _preprocess(im, new_shape=(640, 640), color=(114, 114, 114), auto=True, scal
     return im, r, (dw, dh)
 
 # drawing the detected bounding boxes every frame, and the line to the knee/him
-def analyze_initial(self, img: np.ndarray, img_orig: np.ndarray) -> None:
+def analyze_initial(self) -> None:
     '''
     Round one analysis, annotating the bounding box and determing angles/points.
     '''
     # more yolo preprocessing
-    image, ratio, dwdh = _preprocess(img_orig, auto=False)
+    image, ratio, dwdh = _preprocess(self.img_orig, auto=False)
     image = image.transpose((2, 0, 1))
     image = np.expand_dims(image, 0)
     image = np.ascontiguousarray(image)
@@ -61,7 +61,7 @@ def analyze_initial(self, img: np.ndarray, img_orig: np.ndarray) -> None:
             self.bar_pt_list.append(center_pt)
             bar_count += 1
         cv2.rectangle(
-            img=img,
+            img=self.img,
             pt1=box[:2],
             pt2=box[2:],
             color=self.bar_conf.cls_colors[self.bar_conf.cls_names[cls_id]],
@@ -73,7 +73,7 @@ def analyze_initial(self, img: np.ndarray, img_orig: np.ndarray) -> None:
         diff_knee: float = (box[1] + box[3]) // 2 - self.knee[1]
         if (abs(diff_hip) < abs(diff_knee)):
             cv2.line(
-                img=img,
+                img=self.img,
                 pt1=center_pt,
                 pt2=(int(self.hip[0]), int(self.hip[1])),
                 color=colors.light_purple,
@@ -82,7 +82,7 @@ def analyze_initial(self, img: np.ndarray, img_orig: np.ndarray) -> None:
             )
         else:
             cv2.line(
-                img=img,
+                img=self.img,
                 pt1=center_pt,
                 pt2=(int(self.knee[0]), int(self.knee[1])),
                 color=colors.light_purple,
@@ -91,7 +91,7 @@ def analyze_initial(self, img: np.ndarray, img_orig: np.ndarray) -> None:
             )
 
             knee_angle: float = drawer.annotate_angle(
-                img, color=colors.blue, l_or_r="l",
+                self, color=colors.blue, l_or_r="l",
                 pt1=[int(self.hip[0]), int(self.hip[1])],
                 pt2=[int(self.knee[0]), int(self.knee[1])],
                 pt3=[int(self.ankle[0]), int(self.ankle[1])],
@@ -127,10 +127,10 @@ def analyze_secondary(self) -> None | tuple[np.ndarray, float, float, float, np.
 
     return np_s_f_bar_pts, median_x, min_y, max_y, stddev, text, text_color
 
-def draw_bar_path(self: PoseAnalyzer, img: np.ndarray, i: int, np_s_f_bar_pts: np.ndarray, median_x: float, min_y: float, max_y: float, stddev: float, text_in: str, text_color: tuple[int, int, int]) -> None:
+def draw_bar_path(self: PoseAnalyzer, i: int, np_s_f_bar_pts: np.ndarray, median_x: float, min_y: float, max_y: float, stddev: float, text_in: str, text_color: tuple[int, int, int]) -> None:
     # bar path
     cv2.polylines(
-        img=img,
+        img=self.img,
         pts=[np_s_f_bar_pts],
         isClosed=False,
         color=colors.red,
@@ -139,7 +139,7 @@ def draw_bar_path(self: PoseAnalyzer, img: np.ndarray, i: int, np_s_f_bar_pts: n
     )
     # ideal path
     cv2.line(
-        img=img,
+        img=self.img,
         pt1=(median_x, min_y),
         pt2=(median_x, max_y),
         color=colors.bright_green,
@@ -148,7 +148,7 @@ def draw_bar_path(self: PoseAnalyzer, img: np.ndarray, i: int, np_s_f_bar_pts: n
     )
     # current location
     cv2.circle(
-        img=img,
+        img=self.img,
         center=self.bar_pt_list[i],
         radius=5,
         color=colors.bright_red,
@@ -157,7 +157,7 @@ def draw_bar_path(self: PoseAnalyzer, img: np.ndarray, i: int, np_s_f_bar_pts: n
     )
     # bar text
     drawer.text(
-        img=img,
+        self,
         text=f"{text_in} ({stddev:.2f})",
         org=(15, 60),
         fontFace=cv2.FONT_HERSHEY_SIMPLEX,
