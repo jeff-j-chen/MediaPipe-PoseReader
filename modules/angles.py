@@ -1,5 +1,5 @@
-import Modules.drawer as drawer
-import Modules.colors as colors
+import modules.drawer as drawer
+import modules.colors as colors
 import math
 import cv2
 import numpy as np

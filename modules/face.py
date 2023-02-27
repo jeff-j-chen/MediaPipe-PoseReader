@@ -4,8 +4,8 @@ import cv2
 import numpy as np
 import math
 
-import Modules.colors as colors
-from Modules.drawer import text
+import modules.colors as colors
+from modules.drawer import text
 
 class FaceDetector(nn.Module):
     def __init__(self):

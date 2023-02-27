@@ -1,8 +1,8 @@
 import cv2
 import numpy as np
 
-import Modules.colors as colors
-import Modules.drawer as drawer
+import modules.colors as colors
+import modules.drawer as drawer
 from main import PoseAnalyzer
 
 # pre-processing for yolo, from their github

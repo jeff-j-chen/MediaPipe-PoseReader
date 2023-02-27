@@ -8,14 +8,14 @@ import argparse
 import torch
 import onnxruntime as ort
 
-import Modules.face as face
-import Modules.drawer as drawer
-import Modules.back_contour as back_contour
-import Modules.bar as bar
-import Modules.angles as angles
-import Modules.reps as reps
-import Modules.colors as colors
-import Modules.configuration as configuration
+import modules.face as face
+import modules.drawer as drawer
+import modules.back_contour as back_contour
+import modules.bar as bar
+import modules.angles as angles
+import modules.reps as reps
+import modules.colors as colors
+import modules.configuration as configuration
 
 class PoseAnalyzer:
     def __init__(self, video_folder, in_path):
@@ -64,7 +64,7 @@ class PoseAnalyzer:
             min_tracking_confidence=self.mp_conf.min_tracking_confidence
         )
         self.shoulder = self.elbow = self.wrist = self.hip = self.knee = self.ankle = self.heel = self.toe = self.right_ear = [0.0, 0.0]
-        self.segmentation_mask: np.ndarray = np.zeros((self.h, self.w), dtype=np.uint8)
+        self.seg_mask: np.ndarray = np.zeros((self.h, self.w), dtype=np.uint8)
 
         # BACK CONTOUR
         # helper for running average
@@ -114,7 +114,7 @@ class PoseAnalyzer:
             self.img_orig = self.img.copy()
             self.img = cv2.cvtColor(self.img, cv2.COLOR_BGR2RGB)
 
-            read_success: bool = self.read_mediapipe(self.img)
+            read_success: bool = self.read_mediapipe()
             if (not read_success):
                 continue
 
@@ -179,12 +179,12 @@ class PoseAnalyzer:
         self.video_output.release()
 
     # define keypoints from mediapose with variable names
-    def read_mediapipe(self, img: np.ndarray) -> bool:
+    def read_mediapipe(self) -> bool:
         '''
         Reads the keypoints and segmentation mask from mediapipe and stores them in the class.
         Returns `False` if no keypoints are found.
         '''
-        results = self.pose.process(img)
+        results = self.pose.process(self.img)
         lm = results.pose_landmarks
         if (lm is None):
             return False
@@ -199,12 +199,14 @@ class PoseAnalyzer:
         self.toe      = [lm.landmark[lm_pose.RIGHT_FOOT_INDEX].x * self.w, lm.landmark[lm_pose.RIGHT_FOOT_INDEX].y * self.h]
         self.right_ear = [lm.landmark[lm_pose.RIGHT_EAR].x       * self.w, lm.landmark[lm_pose.RIGHT_EAR].y        * self.h]
 
-        self.segmentation_mask = results.segmentation_mask
         # write the segmentation mask over the original image
-        condition = np.stack((results.segmentation_mask,) * 3, axis=-1) > 0.1
-        bg_image = np.zeros(img.shape, dtype=np.uint8)
-        bg_image[:] = colors.black
-        self.img = np.where(condition, img, bg_image)
+        self.seg_mask = results.segmentation_mask > self.back_conf.seg_thresh
+        stacked = np.stack((self.seg_mask,) * 3, axis=-1)
+        img_dark = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
+        img_dark[:, :, 1] = img_dark[:, :, 1] * self.back_conf.desat # pyright: ignore[reportGeneralTypeIssues]
+        img_dark[:, :, 2] = img_dark[:, :, 2] * self.back_conf.darken # pyright: ignore[reportGeneralTypeIssues]
+        img_dark = cv2.cvtColor(img_dark, cv2.COLOR_HSV2BGR)
+        self.img = np.where(stacked, self.img, img_dark)
         return True
 
 

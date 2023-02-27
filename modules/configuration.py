@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from torchvision import transforms
-import Modules.colors as colors
+import modules.colors as colors
 
 @dataclass
 class AnalysisConfig:
@@ -51,6 +51,11 @@ class BackContourConfig:
     round_thresh: float = 0.16
     # window size for running average
     running_avg_amount: int = 2
+    # minimum threshold for segmenting body vs. background
+    seg_thresh: float = 0.45
+    # how much to change desaturation and value for the darkened bg to be
+    desat: float = 0.8
+    darken: float = 0.8
 
 @dataclass
 class BarPathConfig:

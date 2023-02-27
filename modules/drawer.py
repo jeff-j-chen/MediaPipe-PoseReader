@@ -2,7 +2,7 @@ import cv2
 import math
 import numpy as np
 
-import Modules.colors as colors
+import modules.colors as colors
 
 # draw lines between keypoints, e.g. shoulder-elbow...
 def draw_lines(self) -> None:
