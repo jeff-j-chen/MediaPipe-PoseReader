@@ -10,39 +10,40 @@ def analyze(self) -> None:
     Performs all necessary analysis for the back contour, and writes the result to the screen.
     '''
 
-    # -3/4 slope to the right side of the box seems to work reasonably well
-    chosen_y_pos: int = int(self.hip[1]) - int(self.hip[0] * 0.75)
+    center_point: tuple[int, int] = (int((self.hip[0] + self.shoulder[0]) / 2), int((self.hip[1] + self.shoulder[1]) / 2))
+    rise: int = self.shoulder[1] - self.hip[1]
+    run: int = self.shoulder[0] - self.hip[0]
+    perp_slope: float = -run / rise
+    ls_offset: float = 0.1
+    offset_pt: tuple[int, int] = (
+        int(self.hip[0] + ls_offset * run),
+        int(self.hip[1] + ls_offset * rise)
+    )
+
     cv2.line(
         img=self.img, thickness=1, lineType=cv2.LINE_AA,
-        pt1=(int(self.hip[0]), int(self.hip[1])),
-        pt2=(0, chosen_y_pos),
-        color=colors.light_blue
+        pt1=offset_pt,
+        pt2=(0, int(offset_pt[1] - offset_pt[0] * perp_slope)),
+        color=colors.black
     )
-
-    for i in range(int(self.hip[0])):
-        x = int(self.hip[0]) - i
-        y = int(self.hip[1]) - i * 1.33
-        y_c = math.ceil(y)
-        y_f = math.floor(y)
-        # print(f"({x}, {y})")
-        if (y < 0 or x < 0):
-            break
-
-        if (self.seg_mask[y_c][x] == False or self.seg_mask[y_f][x] == False):
-            print(f" found at ({x}, {y})")
-            cv2.circle(img=self.img, center=(x, y_c), radius=5, color=colors.red, thickness=-1)
-            break
-
-    # draw the perpendicular bisector to the line that connects the hip and shoulder
     cv2.line(
-        img=self.img,
-        pt1=(int(self.hip[0]), int(self.hip[1])),
-        pt2=(int(self.shoulder[0]), int(self.shoulder[1])),
-        color=colors.light_red,
-        thickness=2,
-        lineType=cv2.LINE_AA
+        img=self.img, thickness=1, lineType=cv2.LINE_AA,
+        pt1=center_point,
+        pt2=(0, int(center_point[1] - center_point[0] * perp_slope)),
+        color=colors.black
     )
 
+    lower_pt: tuple[int, int] = _det_int(self, offset_pt, perp_slope)
+    upper_pt: tuple[int, int] = _det_int(self, center_point, perp_slope)
+    print(lower_pt)
+    print(upper_pt)
+    merged = cv2.merge([
+        self.seg_mask[upper_pt[1]:lower_pt[1], lower_pt[0]:upper_pt[0]] * 255,
+        self.seg_mask[upper_pt[1]:lower_pt[1], lower_pt[0]:upper_pt[0]] * 255,
+        self.seg_mask[upper_pt[1]:lower_pt[1], lower_pt[0]:upper_pt[0]] * 255,
+    ])
+    # fill the center region of self.img with red
+    self.img[upper_pt[1]:lower_pt[1], lower_pt[0]:upper_pt[0]] = merged
 
 #     # DRAWING SPINE VS TRIANGLE
 #     top_right_intersection = nearest_point
@@ -103,3 +104,19 @@ def analyze(self) -> None:
 #         org=(15, 30), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=cur_color, thickness=2,
 #         lineType=cv2.LINE_AA
 #     )
+
+def _det_int(self, pt: tuple[int, int], mult: float) -> tuple[int, int]:
+    for i in range(int(pt[0])):
+        x = int(pt[0]) - i
+        y = int(pt[1]) - i * mult
+        y_c = math.ceil(y)
+        y_f = math.floor(y)
+        # print(f"({x}, {y})")
+        if (y < 0 or x < 0):
+            break
+        cv2.circle(img=self.img, center=(x, y_c), radius=2, color=colors.blue, thickness=-1)
+        if (self.seg_mask[y_c][x] == False or self.seg_mask[y_f][x] == False):
+            cv2.circle(img=self.img, center=(x, y_c), radius=5, color=colors.red, thickness=1)
+            return (x, y_c)
+
+    return (0, 0)
