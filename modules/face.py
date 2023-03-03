@@ -87,7 +87,7 @@ def analyze(self) -> None:
     ]
     # necessary setup
     conv = cv2.cvtColor(face_region, cv2.COLOR_BGR2RGB)
-    tensor = self.face_conf.pt_trans(conv).unsqueeze(0) # pyright: ignore[reportGeneralTypeIssues]
+    tensor = self.face_conf.pt_trans(conv).unsqueeze(0) # type: ignore
     output = self.model(tensor)
     probs = torch.softmax(output, dim=1)
     # use softmax to predict the angle: either 0 (straight forward), 30, 60, or 90 (straight down)

@@ -10,16 +10,21 @@ def analyze(self) -> None:
     Performs all necessary analysis for the back contour, and writes the result to the screen.
     '''
 
+    # center point of the spine (hip-shoulder)
     center_point: tuple[int, int] = (int((self.hip[0] + self.shoulder[0]) / 2), int((self.hip[1] + self.shoulder[1]) / 2))
+    # for calclating the perpendicular slope
     rise: int = self.shoulder[1] - self.hip[1]
     run: int = self.shoulder[0] - self.hip[0]
     perp_slope: float = -run / rise
+
+    # how much 'upwards' to offset the lower lumbar spine line along the hip-shoulder line
     ls_offset: float = 0.1
     offset_pt: tuple[int, int] = (
         int(self.hip[0] + ls_offset * run),
         int(self.hip[1] + ls_offset * rise)
     )
 
+    # draw the upper and lower lumbar spine estimation lines
     cv2.line(
         img=self.img, thickness=1, lineType=cv2.LINE_AA,
         pt1=offset_pt,
@@ -33,36 +38,29 @@ def analyze(self) -> None:
         color=colors.black
     )
 
-    lower_pt: tuple[int, int] = _det_int(self, offset_pt, perp_slope)
-    upper_pt: tuple[int, int] = _det_int(self, center_point, perp_slope)
-    print(lower_pt)
-    print(upper_pt)
-    merged = cv2.merge([
-        self.seg_mask[upper_pt[1]:lower_pt[1], lower_pt[0]:upper_pt[0]] * 255,
-        self.seg_mask[upper_pt[1]:lower_pt[1], lower_pt[0]:upper_pt[0]] * 255,
-        self.seg_mask[upper_pt[1]:lower_pt[1], lower_pt[0]:upper_pt[0]] * 255,
-    ])
-    # fill the center region of self.img with red
-    self.img[upper_pt[1]:lower_pt[1], lower_pt[0]:upper_pt[0]] = merged
+    # lower point and upper point of the lumbar spine contour
+    l_pt: tuple[int, int] = _det_int(self, offset_pt, perp_slope)
+    u_pt: tuple[int, int] = _det_int(self, center_point, perp_slope)
 
-#     # DRAWING SPINE VS TRIANGLE
-#     top_right_intersection = nearest_point
-#     # fill the user's back contour with red
-#     lumbar_spine_contour = actual_contour_pts
-#     lumbar_spine_contour.append(
-#         np.array([top_right_intersection[0], bottom_left_intersection[1]])
-#     )
-#     lumbar_spine_contour = np.array(lumbar_spine_contour)
-#     cv2.fillPoly(self.img, [lumbar_spine_contour], colors.light_red)
+    # make sure that the x points aren't reserved
+    if (u_pt[0] - l_pt[0] < 0):
+        return
 
-#     # overlay the 'ideal' triangle on their back with green, only the red peeks through
-#     triangle_pts = [
-#         [bottom_left_intersection[0], bottom_left_intersection[1]],
-#         [top_right_intersection[0], top_right_intersection[1]],
-#         [top_right_intersection[0], bottom_left_intersection[1]],
-#     ]
-#     triangle_pts = np.array(triangle_pts)
-#     cv2.fillPoly(img=self.img, pts=[triangle_pts], color=colors.light_aqua)
+    # draw the lumbar spine contour on the image in red, using a stacked true/false
+    self.img[u_pt[1]:l_pt[1], l_pt[0]:u_pt[0]] = np.where(
+        self.stacked[u_pt[1]:l_pt[1],l_pt[0]:u_pt[0]],
+        self.red_stacked[u_pt[1]:l_pt[1],l_pt[0]:u_pt[0]],
+        self.img[u_pt[1]:l_pt[1],l_pt[0]:u_pt[0]]
+    )
+
+    # draw the 'perfect' lumbar spine (a triangle) onto the screen in bright green, covering the red contour, so that the bad sections 'stick out'
+    triangle_pts: list[tuple[int, int]] = [
+        (l_pt[0], l_pt[1]),
+        (u_pt[0], u_pt[1]),
+        (u_pt[0], l_pt[1]),
+    ]
+    triangle_pts = np.array(triangle_pts) # type: ignore
+    cv2.fillPoly(img=self.img, pts=[triangle_pts], color=colors.bright_green)
 
 
 #     # COMPARISON WITH 'IDEAL' STRAIGHT BACK
@@ -114,9 +112,10 @@ def _det_int(self, pt: tuple[int, int], mult: float) -> tuple[int, int]:
         # print(f"({x}, {y})")
         if (y < 0 or x < 0):
             break
-        cv2.circle(img=self.img, center=(x, y_c), radius=2, color=colors.blue, thickness=-1)
+        cv2.circle(img=self.img, center=(x, y_c), radius=2, color=colors.aqua, thickness=-1)
         if (self.seg_mask[y_c][x] == False or self.seg_mask[y_f][x] == False):
             cv2.circle(img=self.img, center=(x, y_c), radius=5, color=colors.red, thickness=1)
             return (x, y_c)
 
+    print("no intersection found")
     return (0, 0)

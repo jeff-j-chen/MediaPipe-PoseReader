@@ -55,7 +55,7 @@ class PoseAnalyzer:
         self.img_orig: np.ndarray = np.zeros((self.h, self.w), dtype=np.uint8)
 
         # POSE DETECTION
-        self.mp_pose = mp.solutions.pose # pyright: ignore[reportGeneralTypeIssues]
+        self.mp_pose = mp.solutions.pose # type: ignore
         self.pose = self.mp_pose.Pose(
             static_image_mode=self.mp_conf.static_image_mode,
             model_complexity=self.mp_conf.model_complexity,
@@ -65,6 +65,15 @@ class PoseAnalyzer:
         )
         self.shoulder = self.elbow = self.wrist = self.hip = self.knee = self.ankle = self.heel = self.toe = self.right_ear = [0.0, 0.0]
         self.seg_mask: np.ndarray = np.zeros((self.h, self.w), dtype=np.uint8)
+        self.stacked: np.ndarray = np.zeros((self.h, self.w), dtype=np.uint8)
+        self.red_stacked: np.ndarray = np.stack(
+            (
+                np.ones((self.h, self.w), dtype=np.uint8) * 255,
+                np.zeros((self.h, self.w), dtype=np.uint8),
+                np.zeros((self.h, self.w), dtype=np.uint8),
+            ),
+            axis=-1
+        )
 
         # BACK CONTOUR
         # helper for running average
@@ -145,7 +154,7 @@ class PoseAnalyzer:
         Second round analysis, refining the bar path, determining heel angle, and averaging out looking direction.
         '''
         if (self.analysis_conf.bar_path):
-            np_s_f_bar_pts, median_x, min_y, max_y, stddev, text, text_color = bar.analyze_secondary(self) # pyright: ignore[reportGeneralTypeIssues]
+            np_s_f_bar_pts, median_x, min_y, max_y, stddev, text, text_color = bar.analyze_secondary(self) # type: ignore
 
         if (self.analysis_conf.angles):
             self.failed_heel_check, median_foot_point = angles.analyze_secondary(self)
@@ -201,12 +210,12 @@ class PoseAnalyzer:
 
         # write the segmentation mask over the original image
         self.seg_mask = results.segmentation_mask > self.back_conf.seg_thresh
-        stacked = np.stack((self.seg_mask,) * 3, axis=-1)
+        self.stacked = np.stack((self.seg_mask,) * 3, axis=-1)
         img_dark = cv2.cvtColor(self.img, cv2.COLOR_BGR2HSV)
-        img_dark[:, :, 1] = img_dark[:, :, 1] * self.back_conf.desat # pyright: ignore[reportGeneralTypeIssues]
-        img_dark[:, :, 2] = img_dark[:, :, 2] * self.back_conf.darken # pyright: ignore[reportGeneralTypeIssues]
+        img_dark[:, :, 1] = img_dark[:, :, 1] * self.back_conf.desat # type: ignore
+        img_dark[:, :, 2] = img_dark[:, :, 2] * self.back_conf.darken # type: ignore
         img_dark = cv2.cvtColor(img_dark, cv2.COLOR_HSV2BGR)
-        self.img = np.where(stacked, self.img, img_dark)
+        self.img = np.where(self.stacked, self.img, img_dark)
         return True
 
 
