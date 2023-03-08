@@ -56,6 +56,7 @@ def analyze_initial(self) -> None:
         center_pt: list[int] = [(box[0] + box[2]) // 2, (box[1] + box[3]) // 2]
         if (cls_id) == 0:
             self.weight_pt_list.append(center_pt)
+            print(f"center pt of weight: {center_pt}")
             weight_count += 1
         else:
             self.bar_pt_list.append(center_pt)
@@ -108,12 +109,16 @@ def analyze_initial(self) -> None:
 def analyze_secondary(self) -> None | tuple[np.ndarray, float, float, float, np.floating, str, tuple[int, int, int]]:
     # process the points so that the bar path is good
     filtered_bar_pts = _remove_close_points(self.bar_pt_list, self.bar_conf.distance_threshold)
+    print(f"number of filtered bar pts: {len(filtered_bar_pts)}")
     if (len(filtered_bar_pts) <= 0):
         return None
 
     filtered2_bar_pts: list[list[int]] = _remove_outliers(filtered_bar_pts, 50)
+    print(f"number of filtered2 bar pts: {len(filtered2_bar_pts)}")
     s_f_bar_pts: list[tuple[float, int]] = _smooth_horizontally(filtered2_bar_pts, self.bar_conf.bar_window_size)
+    print(f"number of smoothed bar pts: {len(s_f_bar_pts)}")
     np_s_f_bar_pts: np.ndarray = np.array(s_f_bar_pts)
+    print(f"np_s_f_bar_pts: {np_s_f_bar_pts}")
     x_coords: np.ndarray = np_s_f_bar_pts[:, 0]
     # draw a straight line upwards through the median, representing a 'good' bar path
     median_x: float = sorted(x_coords)[len(x_coords) // 2]

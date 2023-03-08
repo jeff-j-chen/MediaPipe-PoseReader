@@ -146,6 +146,7 @@ class PoseAnalyzer:
             img_list.append(self.img)
 
         print("refining...")
+        print(f"number of original bar points: {len(self.bar_pt_list)}")
         self.second_pass(img_list)
 
     # yolo, remove overlapping points, draw paths, calculate straightness, annotate second round stuff, write to screen
@@ -160,6 +161,8 @@ class PoseAnalyzer:
             self.failed_heel_check, median_foot_point = angles.analyze_secondary(self)
 
         start, end = reps.det_start_end(self, img_list)
+        start = 0
+        end = self.video_length - 1
 
         if (self.analysis_conf.face):
             avg = sum(self.face_angles[start:end+1]) / (end - start + 1)
@@ -167,7 +170,7 @@ class PoseAnalyzer:
             # if average angle is greater than 20 or if there are more than 3x 60 degree angles, fail later
 
         for i in trange(start, end+1):
-            img = img_list[i]
+            self.img = img_list[i]
 
             if (self.analysis_conf.angles):
                 angles.knee_annotation(self)
@@ -181,8 +184,8 @@ class PoseAnalyzer:
                 face.write_res(self, avg, sixty_count) # pyright: ignore[reportUnboundVariable]
 
             # convert to bgr for writing to video
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            self.video_output.write(img)
+            self.img = cv2.cvtColor(self.img, cv2.COLOR_RGB2BGR)
+            self.video_output.write(self.img)
 
         self.cap.release()
         self.video_output.release()

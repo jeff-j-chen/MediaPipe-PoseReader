@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 
 def det_start_end(self, img_list: list[np.ndarray]) -> tuple[int, int]:
     '''
@@ -10,8 +11,10 @@ def det_start_end(self, img_list: list[np.ndarray]) -> tuple[int, int]:
     if (self.analysis_conf.start_end):
         # calculate the difference in bar position at every frame
         bar_diffs = []
+        print("number of points when determining start and end: ", len(self.bar_pt_list))
         for i in range(len(self.bar_pt_list) - 1):
             bar_diffs.append(self.bar_pt_list[i + 1][1] - self.bar_pt_list[i][1])
+            # annotate the bar diff onto the image
         # start is declared when there are 3 consecutive frames of upward bar movement
         for i in range(len(bar_diffs) - 2):
             if (bar_diffs[i] < 0 and bar_diffs[i + 1] < 0 and bar_diffs[i + 2] < 0):

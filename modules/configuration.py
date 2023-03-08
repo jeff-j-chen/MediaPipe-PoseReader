@@ -56,6 +56,8 @@ class BackContourConfig:
     # how much to change desaturation and value for the darkened bg to be
     desat: float = 0.8
     darken: float = 0.8
+    # how much to adjust the triangle in further to increase accuracy
+    realign: int = 5
 
 @dataclass
 class BarPathConfig:
