@@ -8,15 +8,15 @@ class AnalysisConfig:
     Base configuration options for analysis
     '''
     # find back straightness
-    back_contour: bool = True
+    back_contour: bool = False
     # find various angles
-    angles: bool = True
+    angles: bool = False
     # find bar path
-    bar_path: bool = True
+    bar_path: bool = False
     # find face direction
-    face: bool = True
+    face: bool = False
     # cut off lift at start and end
-    start_end: bool = True
+    start_end: bool = False
 
 @dataclass
 class MediaPipeConfig:
@@ -73,7 +73,7 @@ class BarPathConfig:
     # colors for each class
     cls_colors: dict[str, tuple[int, int, int]] = field(default_factory=dict)
     # minimum distance between points, any closer and they are removed
-    distance_threshold: int = 2
+    distance_threshold: int = 1
     # window size for the smoothing for the bar path
     bar_window_size: int = 2
     # cutoff for 'good' vs 'bad' bar path

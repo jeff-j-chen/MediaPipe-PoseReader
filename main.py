@@ -130,11 +130,11 @@ class PoseAnalyzer:
             drawer.draw_lines(self)
             drawer.draw_points(self)
 
-            if (self.analysis_conf.back_contour):
-                back_contour.analyze(self)
-
             if (self.analysis_conf.angles):
                 angles.analyze_initial(self)
+
+            if (self.analysis_conf.back_contour):
+                back_contour.analyze(self)
 
             if (self.analysis_conf.bar_path):
                 bar.analyze_initial(self)
@@ -162,14 +162,15 @@ class PoseAnalyzer:
 
         start, end = reps.det_start_end(self, img_list)
         start = 0
-        end = self.video_length - 1
+        end = len(img_list) - 1
 
         if (self.analysis_conf.face):
             avg = sum(self.face_angles[start:end+1]) / (end - start + 1)
             sixty_count = len([x for x in self.face_angles if x == 60])
             # if average angle is greater than 20 or if there are more than 3x 60 degree angles, fail later
 
-        for i in trange(start, end+1):
+        print(len(img_list))
+        for i in trange(start, end):
             self.img = img_list[i]
 
             if (self.analysis_conf.angles):

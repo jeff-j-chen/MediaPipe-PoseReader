@@ -178,20 +178,16 @@ def _remove_close_points(points: list[list[int]], threshold: int) -> list[list[i
     '''
     Helper function, removes all points that are too close to each other in the y axis.
     '''
-    filtered_points: list[list[int]] = []
-    for i, pt1 in enumerate(points):
-        should_add_point = True
-        for j, pt2 in enumerate(points):
-            # avoid removing itself
-            if i == j:
-                continue
-            # don't add points that are too close together
-            if abs(pt1[1] - pt2[1]) < threshold:
-                should_add_point: bool = False
-                break
-        if should_add_point:
-            filtered_points.append(pt1)
-    return filtered_points
+    unique_points: list[list[int]] = []
+    existing_ys: list[int] = []
+    print(len(points))
+    print(points)
+    for p in points:
+        if (p[1] not in existing_ys):
+            unique_points.append(p)
+            existing_ys.append(p[1])
+    print(existing_ys)
+    return unique_points
 
 # helper for path drawing, remove all points that are too far from the median in the x axis
 def _remove_outliers(points: list[list[int]], threshold: int) -> list[list[int]]:
