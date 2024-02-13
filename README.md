@@ -1,6 +1,12 @@
 # MediaPipe-PoseReader
 This is the official implementation of the approaches described in the paper:
-> Jeff Chen. [An exploration of computer vision and machine learning approaches in the evaluation of weightlifting technique](https://jeffjchen.org), 2022
+
+![image](https://github.com/jeff-j-chen/MediaPipe-PoseReader/assets/46868596/581dc040-d109-4cac-a9fc-35496ba82cd6)
+![image](https://github.com/jeff-j-chen/MediaPipe-PoseReader/assets/46868596/972c9e20-43e4-4f1c-8d18-9942546406bd)
+![image](https://github.com/jeff-j-chen/MediaPipe-PoseReader/assets/46868596/8bd8ba08-831c-4b1c-b146-be90813287fb)
+![image](https://github.com/jeff-j-chen/MediaPipe-PoseReader/assets/46868596/1f946696-eb51-4b72-a076-0953d6edc9b0)
+
+
 
 ## Demo
 ![](https://github.com/4a454646/MediaPipe-PoseReader/blob/main/DEMO/output.gif)<br>
