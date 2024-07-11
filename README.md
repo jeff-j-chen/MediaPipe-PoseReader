@@ -1,5 +1,7 @@
 # MediaPipe-PoseReader
 This is the official implementation of the approaches described in the paper:
+An exploration of computer vision and machine learning approaches in the evaluation of weightlifting technique
+Jan 5, 2023
 
 ![image](https://github.com/jeff-j-chen/MediaPipe-PoseReader/assets/46868596/581dc040-d109-4cac-a9fc-35496ba82cd6)
 ![image](https://github.com/jeff-j-chen/MediaPipe-PoseReader/assets/46868596/972c9e20-43e4-4f1c-8d18-9942546406bd)
